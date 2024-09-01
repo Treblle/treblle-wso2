@@ -1,10 +1,9 @@
-
-package com.trebelle.ws02publisher.handlers;
+package com.treblle.wso2publisher.handlers;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-import com.trebelle.ws02publisher.dto.TrebllePayload;
+import com.treblle.wso2publisher.dto.TrebllePayload;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -26,8 +25,8 @@ public class EventQueue {
     public EventQueue(int queueSize, int workerThreadCount) {
         publisherExecutorService = Executors.newFixedThreadPool(workerThreadCount,
                 new DefaultAnalyticsThreadFactory("Queue-Worker"));
-        String apiKey = System.getenv("TREBELLE_API_KEY");
-        String projectId = System.getenv("TREBELLE_PROJECT_ID");
+        String apiKey = System.getenv("TREBLLE_API_KEY");
+        String projectId = System.getenv("TREBLLE_PROJECT_ID");
         PublisherClient publisherClient = new PublisherClient(apiKey, projectId);
         eventQueue = new LinkedBlockingQueue<>(queueSize);
         failureCount = new AtomicInteger(0);

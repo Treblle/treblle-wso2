@@ -1,5 +1,5 @@
 
-package com.trebelle.ws02publisher.handlers;
+package com.treblle.wso2publisher.handlers;
 
 import org.apache.axis2.util.URL;
 import org.apache.commons.logging.Log;
@@ -12,8 +12,8 @@ import org.apache.http.entity.StringEntity;
 import org.wso2.carbon.apimgt.impl.gatewayartifactsynchronizer.exception.ArtifactSynchronizerException;
 import org.wso2.carbon.apimgt.impl.utils.APIUtil;
 
-import com.trebelle.ws02publisher.dto.RuntimeError;
-import com.trebelle.ws02publisher.dto.TrebllePayload;
+import com.treblle.wso2publisher.dto.RuntimeError;
+import com.treblle.wso2publisher.dto.TrebllePayload;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -75,9 +75,6 @@ public class PublisherClient {
         CloseableHttpResponse response = maskAndSendPayload(payload, randomBaseUrl);
 
         int statusCode = 0;
-        if (response != null) {
-            statusCode = response.getStatusLine().getStatusCode();
-        }
 
 
         if (statusCode == 200 || statusCode == 201 || statusCode == 202 || statusCode == 204) {

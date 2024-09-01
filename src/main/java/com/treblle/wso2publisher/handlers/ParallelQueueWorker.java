@@ -1,8 +1,10 @@
-package com.trebelle.ws02publisher.handlers;
+package com.treblle.wso2publisher.handlers;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import com.trebelle.ws02publisher.dto.TrebllePayload;
+
+import com.treblle.wso2publisher.dto.TrebllePayload;
+
 import java.util.concurrent.BlockingQueue;
 
 /**

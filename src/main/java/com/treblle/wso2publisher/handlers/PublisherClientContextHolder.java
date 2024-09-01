@@ -1,4 +1,4 @@
-package com.trebelle.ws02publisher.handlers;
+package com.treblle.wso2publisher.handlers;
 
 /**
  * Holds context of the Publisher client retry mechanism.

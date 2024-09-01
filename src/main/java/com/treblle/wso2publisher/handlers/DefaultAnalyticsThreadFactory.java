@@ -1,5 +1,5 @@
 
-package com.trebelle.ws02publisher.handlers;
+package com.treblle.wso2publisher.handlers;
 
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;

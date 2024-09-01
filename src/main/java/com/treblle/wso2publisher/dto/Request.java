@@ -1,4 +1,4 @@
-package com.trebelle.ws02publisher.dto;
+package com.treblle.wso2publisher.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;

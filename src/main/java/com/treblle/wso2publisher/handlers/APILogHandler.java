@@ -42,11 +42,9 @@ public class APILogHandler extends AbstractSynapseHandler {
     private static final String TREBLLE_REQ_BODY = "TREBLLE_REQ_BODY";
     private static final String TREBLLE_REQ_PATH = "TREBLLE_REQ_PATH";
     private static final String TREBLLE_REQ_METHOD = "TREBLLE_REQ_METHOD";
-    private static final String TREBLLE_API_NAME = "TREBLLE_API_NAME";
     private static final String TREBLLE_REQ_IP = "TREBLLE_REQ_IP";
     private static final String REST_URL_POSTFIX = "REST_URL_POSTFIX";
     private static final String HTTP_METHOD = "HTTP_METHOD";
-    private static final String SYNAPSE_REST_API = "SYNAPSE_REST_API";
     private static final String CARBON_LOCAL_IP = "carbon.local.ip";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static String serverIP;
@@ -55,6 +53,11 @@ public class APILogHandler extends AbstractSynapseHandler {
 
     @Override
     public boolean handleRequestInFlow(MessageContext messageContext) {
+
+        if (!isEnabledTenantDomain(messageContext)) {
+            return true;
+        }
+
         // Get the Axis2 message context from the Synapse message context
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
@@ -84,11 +87,6 @@ public class APILogHandler extends AbstractSynapseHandler {
 
     @Override
     public boolean handleRequestOutFlow(MessageContext messageContext) {
-        // Retrieve the API name from the message context
-        String apiName = (String) messageContext.getProperty(SYNAPSE_REST_API);
-        // Set the API name in the message context with a unique property key
-        messageContext.setProperty(TREBLLE_API_NAME, apiName); // unique name can be used as uid
-
         return true;
     }
 
@@ -99,6 +97,10 @@ public class APILogHandler extends AbstractSynapseHandler {
 
     @Override
     public boolean handleResponseOutFlow(MessageContext messageContext) {
+
+        if (!isEnabledTenantDomain(messageContext)) {
+            return true;
+        }
 
         // Create a TrebllePayload object using the message context and gateway URL
         TrebllePayload payload = createPayload(messageContext, DataHolder.getInstance().getGatewayURL());
@@ -378,6 +380,23 @@ public class APILogHandler extends AbstractSynapseHandler {
         }
 
         return serverIP;
+    }
+
+    private boolean isEnabledTenantDomain(MessageContext messageContext) {
+
+        // Retrieve the tenant domain from the message context
+        String tenantDomain = (String) messageContext.getProperty("tenant.info.domain");
+
+        if (tenantDomain == null) {
+            log.warn("Tenant domain is null. Skipping the handler.");
+            return false;
+        }
+
+        if (DataHolder.getInstance().getEnabledTenantDomains().containsKey(tenantDomain)) {
+            return true;
+        }
+
+        return false;
     }
 
 }

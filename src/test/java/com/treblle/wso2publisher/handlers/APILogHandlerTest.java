@@ -16,27 +16,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static junit.framework.Assert.assertNotNull;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class APILogHandlerTest {
-
-    @Test
-    public void handleRequestOutFlowTest() throws Exception {
-
-        SynapseConfiguration synCfg = new SynapseConfiguration();
-        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
-        AxisConfiguration axisConfig = new AxisConfiguration();
-        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
-        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
-                new Axis2SynapseEnvironment(cfgCtx, synCfg));
-        synCtx.setProperty("SYNAPSE_REST_API", "mock-v1");
-
-        APILogHandler apiLogHandler = new APILogHandler();
-        boolean response = apiLogHandler.handleRequestOutFlow(synCtx);
-        Assert.assertTrue(response);
-
-        String apiName = (String) synCtx.getProperty("TREBLLE_API_NAME");
-        Assert.assertEquals(apiName, "mock-v1");
-    }
 
     @Test
     public void testGetSourceIP() throws Exception {
@@ -89,12 +72,15 @@ public class APILogHandlerTest {
         ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
         MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
                 new Axis2SynapseEnvironment(cfgCtx, synCfg));
+        synCtx.setProperty("tenant.info.domain", "carbon.super");
+
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "application/json");
         headers.put("X-FORWARDED-FOR", "0:0:0:0:0:0:0:1");
         axisMsgCtx.setProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS, headers);
         axisMsgCtx.setProperty("REST_URL_POSTFIX", "/test");
         axisMsgCtx.setProperty("HTTP_METHOD", "POST");
+        System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super,abc.com");
 
         // Create the APILogHandler instance
         APILogHandler apiLogHandler = new APILogHandler();
@@ -180,4 +166,39 @@ public class APILogHandlerTest {
         // Assert the expected results
         assertNotNull(trebllePayload);
     }
+
+    @Test
+    public void testIsEnabledTenantDomain() throws Exception {
+
+        // Set up the mock behavior
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+        synCtx.setProperty("tenant.info.domain", "");
+        Thread.sleep(1000);
+
+        System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super,abc.com,xyz.com");
+
+        // Create the APILogHandler instance
+        APILogHandler apiLogHandler = new APILogHandler();
+
+        // Invoke the createPayload method
+        Method isEnabledTenantDomainMethod = APILogHandler.class.getDeclaredMethod("isEnabledTenantDomain",
+                MessageContext.class);
+        isEnabledTenantDomainMethod.setAccessible(true);
+        boolean isEnabledTenantDomain = (boolean) isEnabledTenantDomainMethod.invoke(apiLogHandler, synCtx);
+        assertFalse(isEnabledTenantDomain);
+
+        synCtx.setProperty("tenant.info.domain", "xyz.com");
+        isEnabledTenantDomain = (boolean) isEnabledTenantDomainMethod.invoke(apiLogHandler, synCtx);
+        assertTrue(isEnabledTenantDomain);
+
+        synCtx.setProperty("tenant.info.domain", "pqr.com");
+        isEnabledTenantDomain = (boolean) isEnabledTenantDomainMethod.invoke(apiLogHandler, synCtx);
+        assertFalse(isEnabledTenantDomain);
+    }
+
 }

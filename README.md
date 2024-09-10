@@ -50,6 +50,7 @@ mvn clean install
   export TREBLLE_QUEUE_SIZE=20000
   export TREBLLE_WORKER_THREADS=1
   export ADDITIONAL_MASK_KEYWORDS=testkey,Authorization,token
+  export TREBLLE_ENABLED_TENANT_DOMAINS=carbon.super,abc.com
   ```
   Windows
   ```
@@ -59,6 +60,7 @@ mvn clean install
   set ADDITIONAL_MASK_KEYWORDS=testkey,Authorization,token
   set TREBLLE_QUEUE_SIZE=20000
   set TREBLLE_WORKER_THREADS=1
+  set TREBLLE_ENABLED_TENANT_DOMAINS=carbon.super,abc.com
   ```
 
   - Definitions
@@ -70,5 +72,6 @@ mvn clean install
   TREBLLE_QUEUE_SIZE=<Messages queue size>
   TREBLLE_WORKER_THREADS=<Number of worker threads for publishing data>
   ADDITIONAL_MASK_KEYWORDS=<Masking keywords such as header names and body parameters>
+  TREBLLE_ENABLED_TENANT_DOMAINS<Treblle Publishing enabled tenant domains>
   ```
 

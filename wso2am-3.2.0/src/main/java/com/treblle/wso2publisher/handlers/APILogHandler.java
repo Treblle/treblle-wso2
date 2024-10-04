@@ -48,7 +48,8 @@ public class APILogHandler extends AbstractSynapseHandler {
     private static final String CARBON_LOCAL_IP = "carbon.local.ip";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static String serverIP;
-
+    private static final String SYNAPSE_REST_API = "SYNAPSE_REST_API";
+    private static final String TREBLLE_API_NAME = "TREBLLE_API_NAME";
     private static final Log log = LogFactory.getLog(APILogHandler.class);
 
     @Override
@@ -87,6 +88,13 @@ public class APILogHandler extends AbstractSynapseHandler {
 
     @Override
     public boolean handleRequestOutFlow(MessageContext messageContext) {
+
+        // Retrieve the API name from the message context
+        String apiName = (String) messageContext.getProperty(SYNAPSE_REST_API);
+
+        // Set the API name in the message context with a unique property key
+        messageContext.setProperty(TREBLLE_API_NAME, apiName);
+
         return true;
     }
 
@@ -290,6 +298,7 @@ public class APILogHandler extends AbstractSynapseHandler {
         // Create and initialize the TrebllePayload object
         TrebllePayload payload = new TrebllePayload();
         payload.setData(data);
+        payload.setApiId((String) messageContext.getProperty(TREBLLE_API_NAME));
 
         return payload;
     }

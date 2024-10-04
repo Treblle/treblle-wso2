@@ -5,48 +5,48 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class TrebllePayload {
 
-  private static final String TREBLLE_VERSION = "0.1";
-  private static final String SDK_NAME = "wso2";
+    private static final String TREBLLE_VERSION = "0.1";
+    private static final String SDK_NAME = "wso2";
 
-  @JsonProperty("api_key")
-  private String apiKey;
+    @JsonProperty("api_key")
+    private String apiKey;
 
-  @JsonProperty("project_id")
-  private String projectId;
+    private String apiId;
 
-  private Data data;
+    private Data data;
 
-  public String getApiKey() {
-    return apiKey;
-  }
+    public String getApiKey() {
+        return apiKey;
+    }
 
-  public void setApiKey(String apiKey) {
-    this.apiKey = apiKey;
-  }
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
 
-  public String getProjectId() {
-    return projectId;
-  }
 
-  public void setProjectId(String projectId) {
-    this.projectId = projectId;
-  }
+    public void setApiId(String apiId) {
+        this.apiId = apiId;
+    }
 
-  @JsonGetter("version")
-  public String getVersion() {
-    return TREBLLE_VERSION;
-  }
+    public String getApiId() {
+        return apiId;
+    }
 
-  @JsonGetter("sdk")
-  public String getSdk() {
-    return SDK_NAME;
-  }
+    @JsonGetter("version")
+    public String getVersion() {
+        return TREBLLE_VERSION;
+    }
 
-  public Data getData() {
-    return data;
-  }
+    @JsonGetter("sdk")
+    public String getSdk() {
+        return SDK_NAME;
+    }
 
-  public void setData(Data data) {
-    this.data = data;
-  }
+    public Data getData() {
+        return data;
+    }
+
+    public void setData(Data data) {
+        this.data = data;
+    }
 }

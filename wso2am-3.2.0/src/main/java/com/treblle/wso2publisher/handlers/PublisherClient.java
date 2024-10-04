@@ -44,18 +44,13 @@ public class PublisherClient {
     // API key for authentication
     private String apiKey;
 
-    // Project ID for the Treblle project
-    private String projectId;
-
     /**
      * Constructor to initialize the PublisherClient with API key and project ID.
      *
      * @param apiKey    the API key for authentication
-     * @param projectId the project ID for the Treblle project
      */
-    public PublisherClient(String apiKey, String projectId) {
+    public PublisherClient(String apiKey) {
         this.apiKey = apiKey;
-        this.projectId = projectId;
 
         // Retrieve additional mask keywords from environment variable
         String maskKeywordsEnv = System.getenv("ADDITIONAL_MASK_KEYWORDS");
@@ -75,6 +70,8 @@ public class PublisherClient {
      */
     private void doRetry(TrebllePayload payload) {
 
+        String API_ID = payload.getApiId();
+
         Integer currentAttempt = PublisherClientContextHolder.PUBLISH_ATTEMPTS.get();
 
         if (currentAttempt > 0) {
@@ -87,7 +84,7 @@ public class PublisherClient {
                 log.error("Failing retry attempt at Publisher client", e);
             }
         } else if (currentAttempt == 0) {
-            log.error("Failed all retrying attempts. Event will be dropped for project id: " + projectId);
+            log.error("Failed all retrying attempts. Event will be dropped for api id: " + API_ID);
         }
     }
 
@@ -96,9 +93,10 @@ public class PublisherClient {
      */
     public void publish(TrebllePayload payload) {
 
+        String API_ID = payload.getApiId();
+
         // Setting API Key and Project ID
         payload.setApiKey(apiKey);
-        payload.setProjectId(projectId);
 
         String randomBaseUrl = getRandomBaseUrl();
         CloseableHttpResponse response = maskAndSendPayload(payload, randomBaseUrl);
@@ -111,11 +109,11 @@ public class PublisherClient {
         if (statusCode == 200 || statusCode == 201 || statusCode == 202 || statusCode == 204) {
             log.debug("Event successfully published.");
         } else if (statusCode >= 400 && statusCode < 500) {
-            log.error("Event publishing failed for project id: " + projectId + " with status code: " + statusCode
+            log.error("Event publishing failed for api id: " + API_ID + " with status code: " + statusCode
                     + " and reason: "
                     + response.getStatusLine().getReasonPhrase());
         } else {
-            log.error("Event publishing failed for for project id: " + projectId + ". Retrying...");
+            log.error("Event publishing failed for for api id: " + API_ID + ". Retrying...");
             doRetry(payload);
         }
 
@@ -179,7 +177,7 @@ public class PublisherClient {
 
         org.json.JSONObject requestBody = new org.json.JSONObject();
         requestBody.put("api_key", trebllePayload.getApiKey());
-        requestBody.put("project_id", trebllePayload.getProjectId());
+        requestBody.put("api_id", trebllePayload.getApiId());
         requestBody.put("sdk", "wso2");
         requestBody.put("version", "0.1");
 

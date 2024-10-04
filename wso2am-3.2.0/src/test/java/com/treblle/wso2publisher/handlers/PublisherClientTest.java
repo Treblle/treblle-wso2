@@ -15,7 +15,7 @@ public class PublisherClientTest {
     @Test
     public void getRandomBaseUrl_ReturnsValidUrl() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123");
         Method getRandomBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getRandomBaseUrl");
         getRandomBaseUrlMethod.setAccessible(true);
 
@@ -26,7 +26,7 @@ public class PublisherClientTest {
     @Test
     public void getRandomBaseUrl_MultipleCalls_ReturnsDifferentUrls() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123");
         Method getRandomBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getRandomBaseUrl");
         getRandomBaseUrlMethod.setAccessible(true);
 
@@ -42,7 +42,7 @@ public class PublisherClientTest {
     @Test
     public void getRandomBaseUrl_AlwaysReturnsNonNull() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123");
         Method getRandomBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getRandomBaseUrl");
         getRandomBaseUrlMethod.setAccessible(true);
 
@@ -55,7 +55,7 @@ public class PublisherClientTest {
     @Test
     public void maskKeywordInJson_MasksSingleKeyword() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123");
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"password\":\"123456\"}");
         String keyword = "password";
 
@@ -68,7 +68,7 @@ public class PublisherClientTest {
     @Test
     public void maskKeywordInJson_MasksNestedKeyword() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123");
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"user\":{\"password\":\"123456\"}}");
         String keyword = "password";
 
@@ -81,7 +81,7 @@ public class PublisherClientTest {
     @Test
     public void maskKeywordInJson_DoesNotMaskNonMatchingKeyword() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123");
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"username\":\"john_doe\"}");
         String keyword = "password";
 
@@ -94,7 +94,7 @@ public class PublisherClientTest {
     @Test
     public void maskKeywordInJson_HandlesEmptyJsonObject() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123");
         org.json.JSONObject jsonObject = new org.json.JSONObject("{}");
         String keyword = "password";
 
@@ -108,7 +108,7 @@ public class PublisherClientTest {
     @Test
     public void doRetry_DropsEventWhenNoAttemptsLeft() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123");
         TrebllePayload payload = new TrebllePayload();
         PublisherClientContextHolder.PUBLISH_ATTEMPTS.set(0);
 

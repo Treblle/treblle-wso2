@@ -44,7 +44,6 @@ mvn clean install
   MacOs
   ```
   export TREBLLE_API_KEY=API-KEY
-  export TREBLLE_PROJECT_ID=Project-id
   export TREBLLE_GATEWAY_URL="https://test.com" 
   export TREBLLE_QUEUE_SIZE=20000
   export TREBLLE_WORKER_THREADS=1
@@ -54,7 +53,6 @@ mvn clean install
   Windows
   ```
   set TREBLLE_API_KEY=API-KEY
-  set TREBLLE_PROJECT_ID=Project-id
   set TREBLLE_GATEWAY_URL="https://test.com" 
   set ADDITIONAL_MASK_KEYWORDS=testkey,Authorization,token
   set TREBLLE_QUEUE_SIZE=20000
@@ -66,7 +64,6 @@ mvn clean install
 
   ```
   TREBLLE_API_KEY=<API Key of the Treblle Project>
-  TREBLLE_PROJECT_ID=<Project Id of the Treblle Project>
   TREBLLE_GATEWAY_URL=<WSO2 API Manager Gateway URL> 
   TREBLLE_QUEUE_SIZE=<Messages queue size>
   TREBLLE_WORKER_THREADS=<Number of worker threads for publishing data>

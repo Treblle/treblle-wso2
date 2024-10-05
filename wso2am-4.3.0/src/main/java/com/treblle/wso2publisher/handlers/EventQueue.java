@@ -36,14 +36,13 @@ public class EventQueue {
 
         // Retrieve the API key and project ID from environment variables
         String apiKey = System.getenv("TREBLLE_API_KEY");
-        String projectId = System.getenv("TREBLLE_PROJECT_ID");
 
-        if (apiKey == null || projectId == null) {
-            log.error("Treblle API Key or Project ID is not set. Please set them in the environment variables.");
+        if (apiKey == null) {
+            log.error("Treblle API Key is not set. Please set them in the environment variables.");
         }
 
         // Create a new PublisherClient with the retrieved API key and project ID
-        PublisherClient publisherClient = new PublisherClient(apiKey, projectId);
+        PublisherClient publisherClient = new PublisherClient(apiKey );
 
         // Initialize the event queue with the specified size
         eventQueue = new LinkedBlockingQueue<>(queueSize);

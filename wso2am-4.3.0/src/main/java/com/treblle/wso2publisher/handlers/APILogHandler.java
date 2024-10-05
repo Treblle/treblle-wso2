@@ -48,6 +48,7 @@ public class APILogHandler extends AbstractSynapseHandler {
     private static final String HTTP_METHOD = "HTTP_METHOD";
     private static final String SYNAPSE_REST_API = "SYNAPSE_REST_API";
     private static final String CARBON_LOCAL_IP = "carbon.local.ip";
+    private static final String API_UUID = "api.uuid";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static String serverIP;
 
@@ -56,7 +57,7 @@ public class APILogHandler extends AbstractSynapseHandler {
     @Override
     public boolean handleRequestInFlow(MessageContext messageContext) {
 
-          if (!isEnabledTenantDomain(messageContext)) {
+        if (!isEnabledTenantDomain(messageContext)) {
             return true;
         }
 
@@ -92,7 +93,7 @@ public class APILogHandler extends AbstractSynapseHandler {
         // Retrieve the API name from the message context
         String apiName = (String) messageContext.getProperty(SYNAPSE_REST_API);
         // Set the API name in the message context with a unique property key
-        messageContext.setProperty(TREBLLE_API_NAME, apiName); // unique name can be used as uid
+        messageContext.setProperty(TREBLLE_API_NAME, apiName);
 
         return true;
     }
@@ -105,7 +106,7 @@ public class APILogHandler extends AbstractSynapseHandler {
     @Override
     public boolean handleResponseOutFlow(MessageContext messageContext) {
 
-          if (!isEnabledTenantDomain(messageContext)) {
+        if (!isEnabledTenantDomain(messageContext)) {
             return true;
         }
 
@@ -240,7 +241,7 @@ public class APILogHandler extends AbstractSynapseHandler {
         request.setHeaders(reqHeaders);
         request.setBody(reqBody);
 
-          // Create and initialize the Response object
+        // Create and initialize the Response object
         final Data data = new Data();
         final Response response = new Response();
 
@@ -299,6 +300,9 @@ public class APILogHandler extends AbstractSynapseHandler {
         // Create and initialize the TrebllePayload object
         TrebllePayload payload = new TrebllePayload();
         payload.setData(data);
+
+        // Set UUID for the API
+        payload.setApiId((String) messageContext.getProperty("API_UUID"));
 
         return payload;
     }
@@ -391,7 +395,7 @@ public class APILogHandler extends AbstractSynapseHandler {
         return serverIP;
     }
 
-     private boolean isEnabledTenantDomain(MessageContext messageContext) {
+    private boolean isEnabledTenantDomain(MessageContext messageContext) {
 
         // Retrieve the tenant domain from the message context
         String tenantDomain = (String) messageContext.getProperty("tenant.info.domain");

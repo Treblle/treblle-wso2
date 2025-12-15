@@ -8,6 +8,9 @@ public class TrebllePayload {
     private static final String TREBLLE_VERSION = "0.1";
     private static final String SDK_NAME = "wso2";
 
+    @JsonProperty("sdk_token")
+    private String sdkToken;
+
     @JsonProperty("api_key")
     private String apiKey;
 
@@ -15,6 +18,14 @@ public class TrebllePayload {
     private String apiId;
 
     private Data data;
+
+    public String getSdkToken() {
+        return sdkToken;
+    }
+
+    public void setSdkToken(String sdkToken) {
+        this.sdkToken = sdkToken;
+    }
 
     public String getApiKey() {
         return apiKey;

@@ -34,15 +34,20 @@ public class EventQueue {
         publisherExecutorService = Executors.newFixedThreadPool(workerThreadCount,
                 new DefaultAnalyticsThreadFactory("Queue-Worker"));
 
-        // Retrieve the API key and project ID from environment variables
+        // Retrieve the SDK token and API key from environment variables
+        String sdkToken = System.getenv("TREBLLE_SDK_TOKEN");
         String apiKey = System.getenv("TREBLLE_API_KEY");
 
-        if (apiKey == null) {
-            log.error("Treblle API Key is not set. Please set them in the environment variables.");
+        if (sdkToken == null) {
+            log.error("Treblle SDK Token is not set. Please set TREBLLE_SDK_TOKEN in the environment variables.");
         }
 
-        // Create a new PublisherClient with the retrieved API key and project ID
-        PublisherClient publisherClient = new PublisherClient(apiKey);
+        if (apiKey == null) {
+            log.error("Treblle API Key is not set. Please set TREBLLE_API_KEY in the environment variables.");
+        }
+
+        // Create a new PublisherClient with the retrieved SDK token and API key
+        PublisherClient publisherClient = new PublisherClient(sdkToken, apiKey);
 
         // Initialize the event queue with the specified size
         eventQueue = new LinkedBlockingQueue<>(queueSize);

@@ -41,16 +41,21 @@ public class PublisherClient {
             "password", "pwd", "secret", "password_confirmation", "cc", "card_number", "ccv", "ssn", "credit_score"};
     List<String> maskKeywordsList = new ArrayList<>(Arrays.asList(MASK_KEYWORDS));
 
+    // SDK token for authentication
+    private String sdkToken;
+
     // API key for authentication
     private String apiKey;
 
 
     /**
-     * Constructor to initialize the PublisherClient with API key and project ID.
+     * Constructor to initialize the PublisherClient with SDK token and API key.
      *
-     * @param apiKey    the API key for authentication
+     * @param sdkToken    the SDK token for authentication
+     * @param apiKey      the API key for authentication
      */
-    public PublisherClient(String apiKey) {
+    public PublisherClient(String sdkToken, String apiKey) {
+        this.sdkToken = sdkToken;
         this.apiKey = apiKey;
 
         // Retrieve additional mask keywords from environment variable
@@ -96,7 +101,8 @@ public class PublisherClient {
 
          String API_ID = payload.getApiId();
 
-        // Setting API Key and Project ID
+        // Setting SDK Token and API Key
+        payload.setSdkToken(sdkToken);
         payload.setApiKey(apiKey);
 
         String randomBaseUrl = getRandomBaseUrl();
@@ -150,7 +156,7 @@ public class PublisherClient {
         HttpClient httpClient = APIUtil.getHttpClient(serviceEndpointURL.getPort(),
                 serviceEndpointURL.getProtocol());
         HttpPost httpPost = new HttpPost(baseUrl);
-        httpPost.setHeader("x-api-key", payload.getApiKey());
+        httpPost.setHeader("x-api-key", payload.getSdkToken());
         httpPost.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
         StringEntity params;
 
@@ -177,6 +183,7 @@ public class PublisherClient {
     private org.json.JSONObject buildRequestBodyForTrebllePayload(TrebllePayload trebllePayload) {
 
         org.json.JSONObject requestBody = new org.json.JSONObject();
+        requestBody.put("sdk_token", trebllePayload.getSdkToken());
         requestBody.put("api_key", trebllePayload.getApiKey());
         requestBody.put("api_id", trebllePayload.getApiId());
         requestBody.put("sdk", "wso2");

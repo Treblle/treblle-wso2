@@ -14,6 +14,7 @@ import org.wso2.carbon.apimgt.impl.utils.APIUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.treblle.wso2publisher.dto.RuntimeError;
 import com.treblle.wso2publisher.dto.TrebllePayload;
+import com.treblle.wso2publisher.utils.FieldMasker;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -36,16 +37,19 @@ public class PublisherClient {
             "https://sicario.treblle.com"
     };
 
-    // Array of keywords to be masked in the payload
-    private static final String[] MASK_KEYWORDS = {
-            "password", "pwd", "secret", "password_confirmation", "cc", "card_number", "ccv", "ssn", "credit_score"};
-    List<String> maskKeywordsList = new ArrayList<>(Arrays.asList(MASK_KEYWORDS));
+    // Default keywords to be masked in the payload
+    private static final String[] DEFAULT_MASK_KEYWORDS = {
+            "password", "pwd", "secret", "password_confirmation", "cc", "card_number",
+            "ccv", "ssn", "credit_score", "api_key"};
 
     // SDK token for authentication
     private String sdkToken;
 
     // API key for authentication
     private String apiKey;
+
+    // Field masker instance
+    private FieldMasker fieldMasker;
 
 
     /**
@@ -58,12 +62,20 @@ public class PublisherClient {
         this.sdkToken = sdkToken;
         this.apiKey = apiKey;
 
+        // Initialize mask keywords list
+        List<String> maskKeywordsList = new ArrayList<>(Arrays.asList(DEFAULT_MASK_KEYWORDS));
+
         // Retrieve additional mask keywords from environment variable
         String maskKeywordsEnv = System.getenv("ADDITIONAL_MASK_KEYWORDS");
         if (maskKeywordsEnv != null) {
             String[] maskKeywordsEnvArray = maskKeywordsEnv.split(",");
-            maskKeywordsList.addAll(Arrays.asList(maskKeywordsEnvArray));
+            for (String keyword : maskKeywordsEnvArray) {
+                maskKeywordsList.add(keyword.trim());
+            }
         }
+
+        // Initialize the field masker with all keywords
+        this.fieldMasker = new FieldMasker(maskKeywordsList);
 
         log.debug("Masking keywords: " + maskKeywordsList);
     }
@@ -98,32 +110,40 @@ public class PublisherClient {
      * publish method is responsible for publishing the event.
      */
     public void publish(TrebllePayload payload) {
+        try {
+            // Skip if payload is null
+            if (payload == null) {
+                log.warn("Treblle payload is null. Skipping publish.");
+                return;
+            }
 
-         String API_ID = payload.getInternalId();
+            String API_ID = payload.getInternalId();
 
-        // Setting SDK Token and API Key
-        payload.setSdkToken(sdkToken);
-        payload.setApiKey(apiKey);
+            // Setting SDK Token and API Key
+            payload.setSdkToken(sdkToken);
+            payload.setApiKey(apiKey);
 
-        String randomBaseUrl = getRandomBaseUrl();
-        CloseableHttpResponse response = maskAndSendPayload(payload, randomBaseUrl);
+            String randomBaseUrl = getRandomBaseUrl();
+            CloseableHttpResponse response = maskAndSendPayload(payload, randomBaseUrl);
 
-        int statusCode = 0;
-        if (response != null) {
-            statusCode = response.getStatusLine().getStatusCode();
+            int statusCode = 0;
+            if (response != null) {
+                statusCode = response.getStatusLine().getStatusCode();
+            }
+
+            if (statusCode == 200 || statusCode == 201 || statusCode == 202 || statusCode == 204) {
+                log.debug("Event successfully published.");
+            } else if (statusCode >= 400 && statusCode < 500) {
+                log.error("Event publishing failed for api id: " + API_ID + " with status code: " + statusCode
+                        + " and reason: "
+                        + response.getStatusLine().getReasonPhrase());
+            } else {
+                log.error("Event publishing failed for for api id: " + API_ID + ". Retrying...");
+                doRetry(payload);
+            }
+        } catch (Exception e) {
+            log.error("Error publishing Treblle event: " + e.getMessage(), e);
         }
-
-        if (statusCode == 200 || statusCode == 201 || statusCode == 202 || statusCode == 204) {
-            log.debug("Event successfully published.");
-        } else if (statusCode >= 400 && statusCode < 500) {
-            log.error("Event publishing failed for api id: " + API_ID + " with status code: " + statusCode
-                    + " and reason: "
-                    + response.getStatusLine().getReasonPhrase());
-        } else {
-            log.error("Event publishing failed for for api id: " + API_ID + ". Retrying...");
-            doRetry(payload);
-        }
-
     }
 
     /**
@@ -241,33 +261,12 @@ public class PublisherClient {
         data.put("server", new org.json.JSONObject(trebllePayload.getData().getServer()));
         data.put("errors", new org.json.JSONArray(trebllePayload.getData().getErrors()));
 
-        for (String keyword : maskKeywordsList) {
-            maskKeywordInJson(data, keyword);
-        }
+        // Mask sensitive data using FieldMasker
+        data = fieldMasker.mask(data);
+
         requestBody.put("data", data);
 
         return requestBody;
-    }
-
-    /**
-     * Method to mask sensitive keywords in the JSON object.
-     *
-     * @param jsonObject the JSON object to be masked
-     * @param keyword    the keyword to be masked
-     */
-    private void maskKeywordInJson(org.json.JSONObject jsonObject, String keyword) {
-        String lowerCaseKeyword = keyword.toLowerCase();
-        for (Object key : jsonObject.keySet()) {
-            String lowerCaseKey = key.toString().toLowerCase();
-            if (lowerCaseKey.equals(lowerCaseKeyword)) {
-                jsonObject.put(key.toString(), "****");
-            } else {
-                Object value = jsonObject.get(key.toString());
-                if (value instanceof org.json.JSONObject) {
-                    maskKeywordInJson((org.json.JSONObject) value, keyword);
-                }
-            }
-        }
     }
 
 }

@@ -56,35 +56,39 @@ public class APILogHandler extends AbstractSynapseHandler {
 
     @Override
     public boolean handleRequestInFlow(MessageContext messageContext) {
+        try {
+            if (!isEnabledTenantDomain(messageContext)) {
+                return true;
+            }
 
-        if (!isEnabledTenantDomain(messageContext)) {
-            return true;
+            // Get the Axis2 message context from the Synapse message context
+            org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
+                    .getAxis2MessageContext();
+
+            // Retrieve and set request headers
+            Map<String, String> headersMap = getHeaders(messageContext);
+            messageContext.setProperty(TREBLLE_REQ_HEADERS, headersMap);
+
+            // Retrieve and set the request body
+            JsonNode jsonNode = getMessageBody(messageContext);
+            messageContext.setProperty(TREBLLE_REQ_BODY, jsonNode);
+
+            // Retrieve and set the request path
+            String reqPath = (String) axis2MsgContext.getProperty(REST_URL_POSTFIX);
+            messageContext.setProperty(TREBLLE_REQ_PATH, reqPath);
+
+            // Retrieve and set the source IP address
+            String sourceIP = getSourceIP(axis2MsgContext, headersMap);
+            messageContext.setProperty(TREBLLE_REQ_IP, sourceIP);
+
+            // Retrieve and set the HTTP method
+            String apiMethod = (String) axis2MsgContext.getProperty(HTTP_METHOD);
+            messageContext.setProperty(TREBLLE_REQ_METHOD, apiMethod);
+
+        } catch (Exception e) {
+            // Never let Treblle SDK errors affect user requests
+            log.error("Error in Treblle handleRequestInFlow: " + e.getMessage(), e);
         }
-
-        // Get the Axis2 message context from the Synapse message context
-        org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
-                .getAxis2MessageContext();
-
-        // Retrieve and set request headers
-        Map<String, String> headersMap = getHeaders(messageContext);
-        messageContext.setProperty(TREBLLE_REQ_HEADERS, headersMap);
-
-        // Retrieve and set the request body
-        JsonNode jsonNode = getMessageBody(messageContext);
-        messageContext.setProperty(TREBLLE_REQ_BODY, jsonNode);
-
-        // Retrieve and set the request path
-        String reqPath = (String) axis2MsgContext.getProperty(REST_URL_POSTFIX);
-        messageContext.setProperty(TREBLLE_REQ_PATH, reqPath);
-
-        // Retrieve and set the source IP address
-        String sourceIP = getSourceIP(axis2MsgContext, headersMap);
-        messageContext.setProperty(TREBLLE_REQ_IP, sourceIP);
-
-        // Retrieve and set the HTTP method
-        String apiMethod = (String) axis2MsgContext.getProperty(HTTP_METHOD);
-        messageContext.setProperty(TREBLLE_REQ_METHOD, apiMethod);
-
         return true;
     }
 
@@ -105,15 +109,19 @@ public class APILogHandler extends AbstractSynapseHandler {
 
     @Override
     public boolean handleResponseOutFlow(MessageContext messageContext) {
+        try {
+            if (!isEnabledTenantDomain(messageContext)) {
+                return true;
+            }
 
-        if (!isEnabledTenantDomain(messageContext)) {
-            return true;
+            // Create a TrebllePayload object using the message context and gateway URL
+            TrebllePayload payload = createPayload(messageContext, DataHolder.getInstance().getGatewayURL());
+            // Add the payload to the event queue for processing
+            DataHolder.getInstance().getEventQueue().put(payload);
+        } catch (Exception e) {
+            // Never let Treblle SDK errors affect user requests
+            log.error("Error in Treblle handleResponseOutFlow: " + e.getMessage(), e);
         }
-
-        // Create a TrebllePayload object using the message context and gateway URL
-        TrebllePayload payload = createPayload(messageContext, DataHolder.getInstance().getGatewayURL());
-        // Add the payload to the event queue for processing
-        DataHolder.getInstance().getEventQueue().put(payload);
         return true;
     }
 
@@ -238,6 +246,15 @@ public class APILogHandler extends AbstractSynapseHandler {
     }
 
     private TrebllePayload createPayload(org.apache.synapse.MessageContext messageContext, String gatewayURL) {
+        try {
+            return buildPayload(messageContext, gatewayURL);
+        } catch (Exception e) {
+            log.error("Error creating Treblle payload: " + e.getMessage(), e);
+            return null;
+        }
+    }
+
+    private TrebllePayload buildPayload(org.apache.synapse.MessageContext messageContext, String gatewayURL) {
 
         // Retrieve the Axis2 message context from the Synapse message context
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)

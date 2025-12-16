@@ -34,6 +34,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class APILogHandler extends AbstractSynapseHandler {
 
@@ -44,6 +47,7 @@ public class APILogHandler extends AbstractSynapseHandler {
     private static final String TREBLLE_REQ_METHOD = "TREBLLE_REQ_METHOD";
     private static final String TREBLLE_API_NAME = "TREBLLE_API_NAME";
     private static final String TREBLLE_REQ_IP = "TREBLLE_REQ_IP";
+    private static final String TREBLLE_REQUEST_ID = "TREBLLE_REQUEST_ID";
     private static final String REST_URL_POSTFIX = "REST_URL_POSTFIX";
     private static final String HTTP_METHOD = "HTTP_METHOD";
     private static final String SYNAPSE_REST_API = "SYNAPSE_REST_API";
@@ -51,6 +55,10 @@ public class APILogHandler extends AbstractSynapseHandler {
     private static final String API_UUID = "api.uuid";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static String serverIP;
+
+    // Track processed requests to prevent duplicates (TTL: 60 seconds)
+    private static final ConcurrentHashMap<String, Long> processedRequests = new ConcurrentHashMap<>();
+    private static final long REQUEST_TTL_MS = TimeUnit.SECONDS.toMillis(60);
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
 
@@ -64,6 +72,10 @@ public class APILogHandler extends AbstractSynapseHandler {
             // Get the Axis2 message context from the Synapse message context
             org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                     .getAxis2MessageContext();
+
+            // Generate a unique request ID to prevent duplicates
+            String requestId = UUID.randomUUID().toString();
+            messageContext.setProperty(TREBLLE_REQUEST_ID, requestId);
 
             // Retrieve and set request headers
             Map<String, String> headersMap = getHeaders(messageContext);
@@ -114,10 +126,33 @@ public class APILogHandler extends AbstractSynapseHandler {
                 return true;
             }
 
+            // Get the request ID to prevent duplicates
+            String requestId = (String) messageContext.getProperty(TREBLLE_REQUEST_ID);
+            if (requestId == null) {
+                log.warn("Treblle request ID not found. Generating new one.");
+                requestId = UUID.randomUUID().toString();
+            }
+
+            // Check if this request has already been processed
+            if (isDuplicateRequest(requestId)) {
+                log.debug("Duplicate request detected and skipped: " + requestId);
+                return true;
+            }
+
+            // Mark this request as processed
+            markRequestAsProcessed(requestId);
+
             // Create a TrebllePayload object using the message context and gateway URL
             TrebllePayload payload = createPayload(messageContext, DataHolder.getInstance().getGatewayURL());
-            // Add the payload to the event queue for processing
-            DataHolder.getInstance().getEventQueue().put(payload);
+
+            // Only queue if payload is not null
+            if (payload != null) {
+                // Add the payload to the event queue for processing
+                DataHolder.getInstance().getEventQueue().put(payload);
+                log.debug("Treblle payload queued for request: " + requestId);
+            } else {
+                log.warn("Treblle payload is null. Skipping event for request: " + requestId);
+            }
         } catch (Exception e) {
             // Never let Treblle SDK errors affect user requests
             log.error("Error in Treblle handleResponseOutFlow: " + e.getMessage(), e);
@@ -259,12 +294,14 @@ public class APILogHandler extends AbstractSynapseHandler {
         // Retrieve the Axis2 message context from the Synapse message context
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
+
         // Retrieve and handle request headers
         Map<String, String> reqHeaders = (Map<String, String>) messageContext.getProperty(TREBLLE_REQ_HEADERS);
         if (reqHeaders == null) {
-            log.error("Request headers are null. Setting a default value.");
+            log.warn("Request headers are null. Setting default empty map.");
             reqHeaders = new HashMap<String, String>();
         }
+
         // Retrieve the request body
         JsonNode reqBody = (JsonNode) messageContext.getProperty(TREBLLE_REQ_BODY);
 
@@ -526,6 +563,43 @@ public class APILogHandler extends AbstractSynapseHandler {
         }
 
         return false;
+    }
+
+    /**
+     * Check if a request has already been processed to prevent duplicates.
+     *
+     * @param requestId The unique request ID
+     * @return true if duplicate, false otherwise
+     */
+    private boolean isDuplicateRequest(String requestId) {
+        if (requestId == null) {
+            return false;
+        }
+
+        // Clean up expired entries
+        cleanupExpiredRequests();
+
+        return processedRequests.containsKey(requestId);
+    }
+
+    /**
+     * Mark a request as processed with current timestamp.
+     *
+     * @param requestId The unique request ID
+     */
+    private void markRequestAsProcessed(String requestId) {
+        if (requestId != null) {
+            processedRequests.put(requestId, System.currentTimeMillis());
+        }
+    }
+
+    /**
+     * Remove expired entries from the processed requests map.
+     * Entries older than REQUEST_TTL_MS are removed.
+     */
+    private void cleanupExpiredRequests() {
+        long now = System.currentTimeMillis();
+        processedRequests.entrySet().removeIf(entry -> (now - entry.getValue()) > REQUEST_TTL_MS);
     }
 
 }

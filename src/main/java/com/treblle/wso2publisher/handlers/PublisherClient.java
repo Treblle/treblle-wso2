@@ -76,7 +76,7 @@ public class PublisherClient {
      */
     private void doRetry(TrebllePayload payload) {
 
-        String API_ID = payload.getApiId();
+        String API_ID = payload.getInternalId();
 
         Integer currentAttempt = PublisherClientContextHolder.PUBLISH_ATTEMPTS.get();
 
@@ -99,7 +99,7 @@ public class PublisherClient {
      */
     public void publish(TrebllePayload payload) {
 
-         String API_ID = payload.getApiId();
+         String API_ID = payload.getInternalId();
 
         // Setting SDK Token and API Key
         payload.setSdkToken(sdkToken);
@@ -185,9 +185,10 @@ public class PublisherClient {
         org.json.JSONObject requestBody = new org.json.JSONObject();
         requestBody.put("sdk_token", trebllePayload.getSdkToken());
         requestBody.put("api_key", trebllePayload.getApiKey());
-        requestBody.put("api_id", trebllePayload.getApiId());
+        requestBody.put("internal_id", trebllePayload.getInternalId());
+        requestBody.put("internal_name", trebllePayload.getInternalName());
         requestBody.put("sdk", "wso2");
-        requestBody.put("version", "0.1");
+        requestBody.put("version", 20);
 
         org.json.JSONObject data = new org.json.JSONObject();
         data.put("language", new org.json.JSONObject(trebllePayload.getData().getLanguage()));

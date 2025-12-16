@@ -302,7 +302,10 @@ public class APILogHandler extends AbstractSynapseHandler {
         payload.setData(data);
 
         // Set UUID for the API
-        payload.setApiId((String) messageContext.getProperty("API_UUID"));
+        payload.setInternalId((String) messageContext.getProperty("API_UUID"));
+
+        // Set Name for the API
+        payload.setInternalName((String) messageContext.getProperty(TREBLLE_API_NAME));
 
         return payload;
     }

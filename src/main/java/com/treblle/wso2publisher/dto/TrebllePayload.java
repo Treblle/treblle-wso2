@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class TrebllePayload {
 
-    private static final String TREBLLE_VERSION = "0.1";
+    private static final int TREBLLE_VERSION = 20;
     private static final String SDK_NAME = "wso2";
 
     @JsonProperty("sdk_token")
@@ -14,8 +14,11 @@ public class TrebllePayload {
     @JsonProperty("api_key")
     private String apiKey;
 
-    @JsonProperty("api_id")
-    private String apiId;
+    @JsonProperty("internal_id")
+    private String internalId;
+
+    @JsonProperty("internal_name")
+    private String internalName;
 
     private Data data;
 
@@ -35,16 +38,24 @@ public class TrebllePayload {
         this.apiKey = apiKey;
     }
 
-    public String getApiId() {
-        return apiId;
+    public String getInternalId() {
+        return internalId;
     }
 
-    public void setApiId(String apiId) {
-        this.apiId = apiId;
+    public void setInternalId(String internalId) {
+        this.internalId = internalId;
+    }
+
+    public String getInternalName() {
+        return internalName;
+    }
+
+    public void setInternalName(String internalName) {
+        this.internalName = internalName;
     }
 
     @JsonGetter("version")
-    public String getVersion() {
+    public int getVersion() {
         return TREBLLE_VERSION;
     }
 

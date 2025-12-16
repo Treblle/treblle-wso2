@@ -128,10 +128,8 @@ public class APILogHandler extends AbstractSynapseHandler {
                 // Parse the start time from the message context property
                 rtStartTime = (objRtStartTime == null ? 0 : Long.parseLong((String) objRtStartTime));
             }
-            // Calculate the response time by subtracting the start time from the current
-            // time
+            // Calculate the response time in milliseconds
             responseTime = System.currentTimeMillis() - rtStartTime;
-            responseTime = responseTime * 1000;
         } catch (Exception e) {
             // Log any errors that occur during the calculation of the response time
             log.error("Error getResponseTime -  " + e.getMessage(), e);
@@ -144,27 +142,99 @@ public class APILogHandler extends AbstractSynapseHandler {
         // Check if the X-FORWARDED-FOR header is present in the headers map
         String xForwardedForHeader = (String) headers.get(HEADER_X_FORWARDED_FOR);
         if (!StringUtils.isEmpty(xForwardedForHeader)) {
-            // Use the first IP address in the X-FORWARDED-FOR header
-            clientIP = xForwardedForHeader;
-            int index = xForwardedForHeader.indexOf(',');
-            if (index > -1) {
-                clientIP = clientIP.substring(0, index);
+            // Extract first valid IPv4 address from X-FORWARDED-FOR header
+            String[] ips = xForwardedForHeader.split(",");
+            clientIP = null;
+            for (String ip : ips) {
+                ip = ip.trim();
+                // Check if it's a valid IPv4 address (simple check: no colons except port)
+                if (isIPv4(ip)) {
+                    clientIP = ip;
+                    break;
+                }
+            }
+            // If no IPv4 found, use the first IP
+            if (clientIP == null && ips.length > 0) {
+                clientIP = ips[0].trim();
             }
         } else {
             // Fallback to the remote address property from the Axis2 message context
             clientIP = (String) axis2Context.getProperty(org.apache.axis2.context.MessageContext.REMOTE_ADDR);
         }
-        // Return null if the client IP is empty
+        // Return "bogon" if the client IP is empty as per schema
         if (StringUtils.isEmpty(clientIP)) {
-            return null;
+            return "bogon";
         }
-        // Ignore the port if present and only use the IP address
+        // Remove port if present (for IPv4 only)
         if (clientIP.contains(":") && clientIP.split(":").length == 2) {
             log.debug("Port will be ignored and only the IP address will be picked from " + clientIP);
             clientIP = clientIP.split(":")[0];
         }
 
         return clientIP;
+    }
+
+    private boolean isIPv4(String ip) {
+        // Remove port if present
+        if (ip.contains(":")) {
+            String[] parts = ip.split(":");
+            if (parts.length == 2) {
+                ip = parts[0];
+            } else {
+                // Multiple colons indicate IPv6
+                return false;
+            }
+        }
+        // Simple IPv4 validation: 4 parts separated by dots
+        String[] parts = ip.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        for (String part : parts) {
+            try {
+                int num = Integer.parseInt(part);
+                if (num < 0 || num > 255) {
+                    return false;
+                }
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private JsonNode mergeQueryIntoBody(JsonNode body, Map<String, String> queryParams) {
+        // If no query parameters, return the original body
+        if (queryParams == null || queryParams.isEmpty()) {
+            return body;
+        }
+
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // If body is null, create a new ObjectNode with query params
+        if (body == null) {
+            com.fasterxml.jackson.databind.node.ObjectNode newBody = objectMapper.createObjectNode();
+            for (Map.Entry<String, String> entry : queryParams.entrySet()) {
+                newBody.put(entry.getKey(), entry.getValue());
+            }
+            return newBody;
+        }
+
+        // If body is an ObjectNode, add query params to it
+        if (body.isObject()) {
+            com.fasterxml.jackson.databind.node.ObjectNode objectNode =
+                (com.fasterxml.jackson.databind.node.ObjectNode) body.deepCopy();
+            for (Map.Entry<String, String> entry : queryParams.entrySet()) {
+                // Only add if the key doesn't already exist in the body
+                if (!objectNode.has(entry.getKey())) {
+                    objectNode.put(entry.getKey(), entry.getValue());
+                }
+            }
+            return objectNode;
+        }
+
+        // If body is not an object (array, string, etc.), return original body
+        return body;
     }
 
     private TrebllePayload createPayload(org.apache.synapse.MessageContext messageContext, String gatewayURL) {
@@ -208,9 +278,9 @@ public class APILogHandler extends AbstractSynapseHandler {
         request.setTimestamp(ZonedDateTime.now(ZoneOffset.UTC).format(DATE_TIME_FORMATTER));
 
         String reqIp = (String) messageContext.getProperty(TREBLLE_REQ_IP);
-        if (reqIp == null) {
-            log.warn("Request IP is null. Setting a default value.");
-            reqIp = "127.0.0.1";
+        if (reqIp == null || reqIp.isEmpty()) {
+            log.warn("Request IP is null or empty. Setting default value as per schema.");
+            reqIp = "bogon";
         }
         request.setIp(reqIp);
 
@@ -239,11 +309,36 @@ public class APILogHandler extends AbstractSynapseHandler {
         String reqPath = gatewayURL + reqURL;
         request.setUrl(reqPath);
         request.setHeaders(reqHeaders);
-        request.setBody(reqBody);
+
+        // Extract query parameters from URL
+        Map<String, String> queryParams = new HashMap<>();
+        if (reqURL.contains("?")) {
+            String queryString = reqURL.substring(reqURL.indexOf("?") + 1);
+            String[] params = queryString.split("&");
+            for (String param : params) {
+                String[] keyValue = param.split("=", 2);
+                if (keyValue.length == 2) {
+                    queryParams.put(keyValue[0], keyValue[1]);
+                } else if (keyValue.length == 1) {
+                    queryParams.put(keyValue[0], "");
+                }
+            }
+        }
+        request.setQuery(queryParams);
+
+        // Merge query parameters into request body
+        JsonNode mergedBody = mergeQueryIntoBody(reqBody, queryParams);
+        request.setBody(mergedBody);
+
+        // Set route_path (null if not available)
+        request.setRoutePath(null);
 
         // Create and initialize the Response object
         final Data data = new Data();
         final Response response = new Response();
+
+        // Initialize errors as empty list
+        List<RuntimeError> runtimeErrors = new ArrayList<>();
 
         int responseCode = 500;
         Object object = axis2MsgContext.getProperty("HTTP_SC");
@@ -269,10 +364,11 @@ public class APILogHandler extends AbstractSynapseHandler {
             runtimeError.setMessage(errorDetail);
             runtimeError.setSource("onError");
 
-            List<RuntimeError> runtimeErrors = new ArrayList<>(2);
             runtimeErrors.add(runtimeError);
-            data.setErrors(runtimeErrors);
         }
+
+        // Always set errors list (empty or with errors)
+        data.setErrors(runtimeErrors);
 
         // Set response properties
         response.setCode(responseCode);
@@ -390,9 +486,9 @@ public class APILogHandler extends AbstractSynapseHandler {
             InetAddress inetAddress = InetAddress.getLocalHost();
             serverIP = inetAddress.getHostAddress();
         } catch (UnknownHostException e) {
-            // Handle the UnknownHostException and set a default IP
+            // Handle the UnknownHostException and set a default IP as per schema
             log.error("Unknown host exception: " + e.getMessage());
-            serverIP = "127.0.0.1";
+            serverIP = "bogon";
         }
 
         return serverIP;

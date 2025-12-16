@@ -18,6 +18,11 @@ public class Request {
   private Map<String, String> headers;
   private JsonNode body;
 
+  @JsonProperty("route_path")
+  private String routePath;
+
+  private Map<String, String> query;
+
   public String getTimestamp() {
     return timestamp;
   }
@@ -72,5 +77,21 @@ public class Request {
 
   public void setBody(JsonNode body) {
     this.body = body;
+  }
+
+  public String getRoutePath() {
+    return routePath;
+  }
+
+  public void setRoutePath(String routePath) {
+    this.routePath = routePath;
+  }
+
+  public Map<String, String> getQuery() {
+    return query;
+  }
+
+  public void setQuery(Map<String, String> query) {
+    this.query = query;
   }
 }

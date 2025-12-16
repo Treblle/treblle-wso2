@@ -208,6 +208,20 @@ public class PublisherClient {
             request.put("body", new org.json.JSONObject());
         }
 
+        // Add route_path
+        if (trebllePayload.getData().getRequest().getRoutePath() != null) {
+            request.put("route_path", trebllePayload.getData().getRequest().getRoutePath());
+        } else {
+            request.put("route_path", org.json.JSONObject.NULL);
+        }
+
+        // Add query parameters
+        if (trebllePayload.getData().getRequest().getQuery() != null) {
+            request.put("query", new org.json.JSONObject(trebllePayload.getData().getRequest().getQuery()));
+        } else {
+            request.put("query", new org.json.JSONObject());
+        }
+
         data.put("request", request);
 
         org.json.JSONObject response = new org.json.JSONObject();

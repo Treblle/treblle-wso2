@@ -81,7 +81,8 @@ public class FieldMasker {
         }
 
         JSONObject result = new JSONObject();
-        for (String key : obj.keySet()) {
+        for (Object keyObj : obj.keySet()) {
+            String key = keyObj.toString();
             Object value = obj.get(key);
             String lowerKey = key.toLowerCase();
 

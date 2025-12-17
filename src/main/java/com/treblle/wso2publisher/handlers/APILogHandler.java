@@ -88,8 +88,12 @@ public class APILogHandler extends AbstractSynapseHandler {
             messageContext.setProperty(TREBLLE_REQ_METHOD, apiMethod);
 
             // Retrieve and set the API resource route path template
-            String routePath = (String) messageContext.getProperty(API_ELECTED_RESOURCE);
+            String routePath = getRoutePath(messageContext);
             messageContext.setProperty(TREBLLE_ROUTE_PATH, routePath);
+
+            if (log.isDebugEnabled()) {
+                log.debug("Captured route path: " + (routePath != null ? routePath : "NULL"));
+            }
 
             return true;
         } catch (Exception e) {
@@ -429,6 +433,114 @@ public class APILogHandler extends AbstractSynapseHandler {
         }
 
         return false;
+    }
+
+    /**
+     * Get the API resource route path template by trying multiple MessageContext properties.
+     * This method attempts several different property names to maximize compatibility across
+     * different WSO2 API Manager versions.
+     *
+     * @param messageContext the Synapse message context
+     * @return the route path template (e.g., "/users/{userId}/posts") or null if not found
+     */
+    private String getRoutePath(MessageContext messageContext) {
+        // List of property names to try, in order of preference
+        String[] propertyNames = {
+            "API_ELECTED_RESOURCE",      // Primary property for API resource template
+            "REST_URL_PATTERN",           // Alternative property name
+            "API_RESOURCE_CACHE_KEY",     // Cache key that may contain resource info
+            "api.ut.resource",            // URI template resource property
+            "SYNAPSE_REST_API_RESOURCE",  // Synapse REST API resource
+            "REST_SUB_REQUEST_PATH",      // Sub-request path (may be template)
+            "API_RESOURCE_PATTERN"        // Resource pattern property
+        };
+
+        log.info("Treblle: Attempting to retrieve route path template...");
+
+        // Try each property name in sequence
+        for (String propertyName : propertyNames) {
+            try {
+                String routePath = (String) messageContext.getProperty(propertyName);
+                if (routePath != null && !routePath.isEmpty()) {
+                    log.info("Treblle: Found route path using property '" + propertyName + "': " + routePath);
+                    return routePath;
+                } else {
+                    log.debug("Treblle: Property '" + propertyName + "' is " +
+                        (routePath == null ? "null" : "empty"));
+                }
+            } catch (Exception e) {
+                log.warn("Treblle: Error reading property '" + propertyName + "': " + e.getMessage());
+            }
+        }
+
+        // If all direct property lookups fail, log available properties for debugging
+        if (log.isInfoEnabled()) {
+            logAvailableProperties(messageContext);
+        }
+
+        log.warn("Treblle: Unable to determine route path template. The 'route_path' field will be null.");
+        return null;
+    }
+
+    /**
+     * Log all available properties in MessageContext that might contain route path information.
+     * This is useful for debugging and discovering which properties are available in different
+     * WSO2 API Manager versions.
+     *
+     * @param messageContext the Synapse message context
+     */
+    private void logAvailableProperties(MessageContext messageContext) {
+        log.info("Treblle: Listing all MessageContext properties containing 'REST', 'API', 'RESOURCE', or 'PATTERN':");
+
+        try {
+            java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
+            int count = 0;
+
+            for (String key : propertyKeys) {
+                String upperKey = key.toUpperCase();
+                if (upperKey.contains("REST") || upperKey.contains("API") ||
+                    upperKey.contains("RESOURCE") || upperKey.contains("PATTERN") ||
+                    upperKey.contains("URI") || upperKey.contains("TEMPLATE")) {
+
+                    Object value = messageContext.getProperty(key);
+                    log.info("Treblle:   - " + key + " = " + value);
+                    count++;
+                }
+            }
+
+            if (count == 0) {
+                log.info("Treblle:   (No relevant properties found in MessageContext)");
+            }
+
+            // Also check Axis2 MessageContext properties
+            org.apache.axis2.context.MessageContext axis2MsgContext =
+                ((Axis2MessageContext) messageContext).getAxis2MessageContext();
+
+            log.info("Treblle: Listing relevant Axis2 MessageContext properties:");
+            int axis2Count = 0;
+
+            java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
+            while (propertyNames.hasNext()) {
+                String key = String.valueOf(propertyNames.next());
+                String upperKey = key.toUpperCase();
+
+                if (upperKey.contains("REST") || upperKey.contains("API") ||
+                    upperKey.contains("RESOURCE") || upperKey.contains("PATTERN") ||
+                    upperKey.contains("URI") || upperKey.contains("TEMPLATE")) {
+
+                    Object value = axis2MsgContext.getProperty(key);
+                    log.info("Treblle:   - " + key + " = " + value);
+                    axis2Count++;
+                }
+            }
+
+            if (axis2Count == 0) {
+                log.info("Treblle:   (No relevant properties found in Axis2 MessageContext)");
+            }
+
+        } catch (Exception e) {
+            log.error("Treblle: Error logging available properties: " + e.getMessage(), e);
+        }
     }
 
 }

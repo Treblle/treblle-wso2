@@ -5,12 +5,11 @@ import org.apache.axis2.util.URL;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.HttpHeaders;
-import org.apache.http.client.HttpClient;
+import org.apache.http.client.entity.GzipCompressingEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
-import org.wso2.carbon.apimgt.api.APIManagementException;
-import org.wso2.carbon.apimgt.impl.utils.APIUtil;
+import org.apache.http.impl.client.CloseableHttpClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.treblle.wso2publisher.dto.RuntimeError;
 import com.treblle.wso2publisher.dto.TrebllePayload;
@@ -19,7 +18,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * PublisherClient is responsible for sending events.
@@ -36,10 +35,16 @@ public class PublisherClient {
             "https://sicario.treblle.com"
     };
 
+    // Round-robin endpoint index for load balancing
+    private static final AtomicInteger endpointIndex = new AtomicInteger(0);
+
     // Array of keywords to be masked in the payload
     private static final String[] MASK_KEYWORDS = {
             "password", "pwd", "secret", "password_confirmation", "cc", "card_number", "ccv", "ssn", "credit_score"};
     List<String> maskKeywordsList = new ArrayList<>(Arrays.asList(MASK_KEYWORDS));
+
+    // Pooled HTTP client for connection reuse
+    private final CloseableHttpClient httpClient;
 
     // SDK Token for authentication
     private String sdkToken;
@@ -48,14 +53,16 @@ public class PublisherClient {
     private String apiKey;
 
     /**
-     * Constructor to initialize the PublisherClient with SDK token and API key.
+     * Constructor to initialize the PublisherClient with SDK token, API key, and HTTP client.
      *
-     * @param sdkToken  the SDK token for authentication
-     * @param apiKey    the API key for the Treblle project
+     * @param sdkToken   the SDK token for authentication
+     * @param apiKey     the API key for the Treblle project
+     * @param httpClient the pooled HTTP client for connection reuse
      */
-    public PublisherClient(String sdkToken, String apiKey) {
+    public PublisherClient(String sdkToken, String apiKey, CloseableHttpClient httpClient) {
         this.sdkToken = sdkToken;
         this.apiKey = apiKey;
+        this.httpClient = httpClient;
 
         // Retrieve additional mask keywords from environment variable
         String maskKeywordsEnv = System.getenv("ADDITIONAL_MASK_KEYWORDS");
@@ -109,10 +116,10 @@ public class PublisherClient {
         payload.setSdkToken(sdkToken);
         payload.setApiKey(apiKey);
 
-        // Check if custom gateway URL is configured, otherwise use random default URL
+        // Check if custom gateway URL is configured, otherwise use round-robin default URL
         String gatewayUrl = System.getenv("TREBLLE_GATEWAY_URL");
         if (gatewayUrl == null || gatewayUrl.trim().isEmpty()) {
-            gatewayUrl = getRandomBaseUrl();
+            gatewayUrl = getNextBaseUrl();
         }
 
         int statusCode = 0;
@@ -141,19 +148,19 @@ public class PublisherClient {
     }
 
     /**
-     * Method to get a random base URL from the list of base URLs.
+     * Method to get the next base URL using round-robin load balancing.
      *
-     * @return a random base URL
+     * @return the next base URL in round-robin order
      */
-    private static String getRandomBaseUrl() {
-        Random random = new Random();
-        int index = random.nextInt(BASE_URLS.length);
+    private static String getNextBaseUrl() {
+        int index = Math.abs(endpointIndex.getAndIncrement() % BASE_URLS.length);
         return BASE_URLS[index];
     }
 
 
     /**
      * Method to mask sensitive data and send the payload to the Treblle service.
+     * Uses gzip compression and pooled HTTP client for optimal performance.
      *
      * @param payload the TrebllePayload object to be sent
      * @param baseUrl the base URL of the Treblle service
@@ -166,22 +173,24 @@ public class PublisherClient {
             payload.getData().setErrors(errors);
         }
 
-        URL serviceEndpointURL = new URL(baseUrl);
-        HttpClient httpClient = APIUtil.getHttpClient(serviceEndpointURL.getPort(),
-                serviceEndpointURL.getProtocol());
         HttpPost httpPost = new HttpPost(baseUrl);
         httpPost.setHeader("x-api-key", payload.getSdkToken());
         httpPost.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
-        StringEntity params;
+        httpPost.setHeader(HttpHeaders.ACCEPT_ENCODING, "gzip, deflate");
 
         try {
             org.json.JSONObject requestBody = buildRequestBodyForTrebllePayload(payload);
             log.debug("Treblle Payload - " + requestBody);
-            params = new StringEntity(requestBody.toString());
-            httpPost.setEntity(params);
-            return APIUtil.executeHTTPRequest(httpPost, httpClient);
-        } catch (IOException | APIManagementException e) {
-            log.error(e.getMessage());
+
+            // Create entity and wrap with gzip compression
+            StringEntity uncompressed = new StringEntity(requestBody.toString());
+            GzipCompressingEntity gzipEntity = new GzipCompressingEntity(uncompressed);
+            httpPost.setEntity(gzipEntity);
+
+            // Use pooled HTTP client for connection reuse
+            return httpClient.execute(httpPost);
+        } catch (IOException e) {
+            log.error("Error sending payload to Treblle: " + e.getMessage(), e);
         }
 
         return null;

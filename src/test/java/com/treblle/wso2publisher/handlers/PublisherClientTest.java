@@ -13,41 +13,45 @@ import java.util.Set;
 public class PublisherClientTest {
 
     @Test
-    public void getRandomBaseUrl_ReturnsValidUrl() throws Exception {
+    public void getNextBaseUrl_ReturnsValidUrl() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
-        Method getRandomBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getRandomBaseUrl");
-        getRandomBaseUrlMethod.setAccessible(true);
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
+        Method getNextBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getNextBaseUrl");
+        getNextBaseUrlMethod.setAccessible(true);
 
-        String url = (String) getRandomBaseUrlMethod.invoke(publisherClient);
+        String url = (String) getNextBaseUrlMethod.invoke(publisherClient);
         Assert.assertTrue(Arrays.asList("https://rocknrolla.treblle.com", "https://punisher.treblle.com", "https://sicario.treblle.com").contains(url));
     }
 
     @Test
-    public void getRandomBaseUrl_MultipleCalls_ReturnsDifferentUrls() throws Exception {
+    public void getNextBaseUrl_MultipleCalls_ReturnsAllUrls() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
-        Method getRandomBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getRandomBaseUrl");
-        getRandomBaseUrlMethod.setAccessible(true);
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
+        Method getNextBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getNextBaseUrl");
+        getNextBaseUrlMethod.setAccessible(true);
 
         Set<String> urls = new HashSet<>();
         for (int i = 0; i < 10; i++) {
-            String url = (String) getRandomBaseUrlMethod.invoke(publisherClient);
+            String url = (String) getNextBaseUrlMethod.invoke(publisherClient);
             urls.add(url);
         }
 
-        Assert.assertTrue(urls.size() > 1);
+        // With round-robin, we should get all 3 URLs after 10 calls
+        Assert.assertTrue(urls.size() >= 3);
     }
 
     @Test
-    public void getRandomBaseUrl_AlwaysReturnsNonNull() throws Exception {
+    public void getNextBaseUrl_AlwaysReturnsNonNull() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
-        Method getRandomBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getRandomBaseUrl");
-        getRandomBaseUrlMethod.setAccessible(true);
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
+        Method getNextBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getNextBaseUrl");
+        getNextBaseUrlMethod.setAccessible(true);
 
         for (int i = 0; i < 10; i++) {
-            String url = (String) getRandomBaseUrlMethod.invoke(publisherClient);
+            String url = (String) getNextBaseUrlMethod.invoke(publisherClient);
             Assert.assertNotNull(url);
         }
     }
@@ -55,7 +59,8 @@ public class PublisherClientTest {
     @Test
     public void maskKeywordInJson_MasksSingleKeyword() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"password\":\"123456\"}");
         String keyword = "password";
 
@@ -68,7 +73,8 @@ public class PublisherClientTest {
     @Test
     public void maskKeywordInJson_MasksNestedKeyword() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"user\":{\"password\":\"123456\"}}");
         String keyword = "password";
 
@@ -81,7 +87,8 @@ public class PublisherClientTest {
     @Test
     public void maskKeywordInJson_DoesNotMaskNonMatchingKeyword() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"username\":\"john_doe\"}");
         String keyword = "password";
 
@@ -94,7 +101,8 @@ public class PublisherClientTest {
     @Test
     public void maskKeywordInJson_HandlesEmptyJsonObject() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
         org.json.JSONObject jsonObject = new org.json.JSONObject("{}");
         String keyword = "password";
 
@@ -108,7 +116,8 @@ public class PublisherClientTest {
     @Test
     public void doRetry_DropsEventWhenNoAttemptsLeft() throws Exception {
 
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456");
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
         TrebllePayload payload = new TrebllePayload();
         PublisherClientContextHolder.PUBLISH_ATTEMPTS.set(0);
 

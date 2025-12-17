@@ -23,12 +23,13 @@ public class EventQueue {
     private final AtomicInteger failureCount;
 
     /**
-     * Constructor to initialize the EventQueue with the specified queue size and worker thread count.
+     * Constructor to initialize the EventQueue with the specified queue size, worker thread count, and HTTP client.
      *
      * @param queueSize         the size of the event queue
      * @param workerThreadCount the number of worker threads
+     * @param httpClient        the pooled HTTP client for connection reuse
      */
-    public EventQueue(int queueSize, int workerThreadCount) {
+    public EventQueue(int queueSize, int workerThreadCount, org.apache.http.impl.client.CloseableHttpClient httpClient) {
 
         // Initialize the executor service with a fixed number of worker threads
         publisherExecutorService = Executors.newFixedThreadPool(workerThreadCount,
@@ -42,8 +43,8 @@ public class EventQueue {
             log.error("Treblle SDK Token or API Key is not set. Please set them in the environment variables.");
         }
 
-        // Create a new PublisherClient with the retrieved SDK token and API key
-        PublisherClient publisherClient = new PublisherClient(sdkToken, apiKey);
+        // Create a new PublisherClient with the retrieved SDK token, API key, and pooled HTTP client
+        PublisherClient publisherClient = new PublisherClient(sdkToken, apiKey, httpClient);
 
         // Initialize the event queue with the specified size
         eventQueue = new LinkedBlockingQueue<>(queueSize);

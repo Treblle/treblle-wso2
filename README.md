@@ -1,8 +1,14 @@
-# Treblle Data Publisher for WSO2 API Manager
+# Treblle - API Intelligence Platform
 
-A lightweight, non-blocking extension for WSO2 API Manager that captures API traffic and sends it to Treblle for monitoring and analytics.
+[![Treblle API Intelligence](https://github.com/user-attachments/assets/b268ae9e-7c8a-4ade-95da-b4ac6fce6eea)](https://treblle.com)
 
-## Compatibility
+[Website](http://treblle.com/) • [Documentation](https://docs.treblle.com/) • [Pricing](https://treblle.com/pricing)
+
+Treblle is an API intelligence platfom that helps developers, teams and organizations understand their APIs from a single integration point.
+
+---
+
+## Treblle WSO2 SDK
 
 | WSO2 API Manager Version | Status | Maven Profile | APIM Version | Synapse Version |
 |-------------------------|---------|---------------|--------------|-----------------|
@@ -212,36 +218,6 @@ export TREBLLE_GATEWAY_URL="https://custom-treblle.your-domain.com"
 
 Use cases: On-premise Treblle installations, custom routing, regional endpoints, or development testing.
 
-## Important Notes
-
-### What Gets Captured
-
-- ✅ HTTP method, URL path, headers, and body (JSON only)
-- ✅ Response status code, headers, body (JSON only), and load time
-- ✅ Client IP address (from `X-Forwarded-For` or direct connection)
-- ✅ Server metadata (OS, Java version, timezone)
-- ✅ Error information for 4xx and 5xx responses
-
-### What Doesn't Get Captured
-
-- ❌ Non-JSON request/response bodies (other content types are skipped)
-- ❌ WebSocket connections
-- ❌ File uploads/downloads
-
-### Performance Impact
-
-- **Zero blocking**: The extension never blocks API requests, even on failures
-- **Async processing**: All Treblle communication happens in background threads
-- **Queue overflow**: Events are dropped (not queued) when the queue is full
-- **Memory usage**: ~40 bytes per event × queue size (default: 20,000 events = ~800KB)
-
-### Failure Handling
-
-- Failed sends are retried once with a 1-second delay
-- After 1 failed retry, the event is dropped
-- API requests continue normally even if Treblle is unreachable
-- Queue overflow drops new events and logs every 1,000 drops
-
 ## Troubleshooting
 
 ### Extension not loading
@@ -318,9 +294,23 @@ mvn test -Dtest=APILogHandlerTest
 mvn test -Dtest=PublisherClientTest
 ```
 
+
+## Getting Help
+
+If you continue to experience issues:
+
+1. Enable `debug: true` and check console output
+2. Verify your SDK token and API key are correct in Treblle dashboard
+3. Test with a simple endpoint first
+4. Check [Treblle documentation](https://docs.treblle.com) for the latest updates
+5. Contact support at <https://treblle.com> or email support@treblle.com
+
 ## Support
 
-- Treblle Documentation: https://docs.treblle.com
-- WSO2 Documentation: https://apim.docs.wso2.com/en/4.3.0/
-- Issues: Please report issues on this repository's issue tracker
+If you have problems of any kind feel free to reach out via <https://treblle.com> or email support@treblle.com and we'll do our best to help you out.
+
+## License
+
+Copyright 2025, Treblle Inc. Licensed under the MIT license:
+http://www.opensource.org/licenses/mit-license.php
 

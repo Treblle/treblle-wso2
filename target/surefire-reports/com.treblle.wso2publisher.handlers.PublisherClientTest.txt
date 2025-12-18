@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.treblle.wso2publisher.handlers.PublisherClientTest
--------------------------------------------------------------------------------
-Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s - in com.treblle.wso2publisher.handlers.PublisherClientTest

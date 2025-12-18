@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class TrebllePayload {
 
-  private static final int TREBLLE_VERSION = 20;
+  private static final int TREBLLE_VERSION = 21;
   private static final String SDK_NAME = "wso2";
 
   @JsonProperty("api_key")

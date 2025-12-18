@@ -45,6 +45,7 @@ public class APILogHandler extends AbstractSynapseHandler {
     private static final String TREBLLE_API_NAME = "TREBLLE_API_NAME";
     private static final String TREBLLE_REQ_IP = "TREBLLE_REQ_IP";
     private static final String TREBLLE_ROUTE_PATH = "TREBLLE_ROUTE_PATH";
+    private static final String TREBLLE_API_UUID = "TREBLLE_API_UUID";
     private static final String REST_URL_POSTFIX = "REST_URL_POSTFIX";
     private static final String HTTP_METHOD = "HTTP_METHOD";
     private static final String SYNAPSE_REST_API = "SYNAPSE_REST_API";
@@ -105,10 +106,21 @@ public class APILogHandler extends AbstractSynapseHandler {
     @Override
     public boolean handleRequestOutFlow(MessageContext messageContext) {
         try {
-            // Retrieve the API name from the message context
-            String apiName = (String) messageContext.getProperty(SYNAPSE_REST_API);
-            // Set the API name in the message context with a unique property key
-            messageContext.setProperty(TREBLLE_API_NAME, apiName); // unique name can be used as uid
+            // Retrieve and set the API name
+            String apiName = getApiName(messageContext);
+            messageContext.setProperty(TREBLLE_API_NAME, apiName);
+
+            if (log.isDebugEnabled()) {
+                log.debug("Captured API name: " + (apiName != null ? apiName : "NULL"));
+            }
+
+            // Retrieve and set the API UUID
+            String apiUuid = getApiUuid(messageContext);
+            messageContext.setProperty(TREBLLE_API_UUID, apiUuid);
+
+            if (log.isDebugEnabled()) {
+                log.debug("Captured API UUID: " + (apiUuid != null ? apiUuid : "NULL"));
+            }
 
             return true;
         } catch (Exception e) {
@@ -267,6 +279,14 @@ public class APILogHandler extends AbstractSynapseHandler {
         // Set the route path (API resource template pattern)
         String routePath = (String) messageContext.getProperty(TREBLLE_ROUTE_PATH);
         request.setRoutePath(routePath);
+
+        // Set the API UUID (internal_id)
+        String apiUuid = (String) messageContext.getProperty(TREBLLE_API_UUID);
+        request.setInternalId(apiUuid);
+
+        // Set the API name (internal_name)
+        String apiName = (String) messageContext.getProperty(TREBLLE_API_NAME);
+        request.setInternalName(apiName);
 
           // Create and initialize the Response object
         final Data data = new Data();
@@ -480,6 +500,226 @@ public class APILogHandler extends AbstractSynapseHandler {
 
         log.warn("Treblle: Unable to determine route path template. The 'route_path' field will be null.");
         return null;
+    }
+
+    /**
+     * Get the API name by trying multiple MessageContext properties.
+     * This method attempts several different property names to maximize compatibility across
+     * different WSO2 API Manager versions.
+     *
+     * @param messageContext the Synapse message context
+     * @return the API name or null if not found
+     */
+    private String getApiName(MessageContext messageContext) {
+        // List of property names to try, in order of preference
+        String[] propertyNames = {
+            "SYNAPSE_REST_API",        // Primary property for API name
+            "API_NAME",                // Alternative property name
+            "REST_API_NAME",           // REST API name property
+            "api.name",                // Lowercase variant
+            "REST_API_CONTEXT",        // API context (may contain name)
+            "API_CONTEXT",             // Alternative context property
+            "org.wso2.carbon.apimgt.gateway.handlers.api.name"  // Fully qualified property
+        };
+
+        log.info("Treblle: Attempting to retrieve API name...");
+
+        // Try each property name in sequence
+        for (String propertyName : propertyNames) {
+            try {
+                Object propertyValue = messageContext.getProperty(propertyName);
+                if (propertyValue != null) {
+                    String apiName = propertyValue.toString();
+                    if (!apiName.isEmpty()) {
+                        log.info("Treblle: Found API name using property '" + propertyName + "': " + apiName);
+                        return apiName;
+                    } else {
+                        log.debug("Treblle: Property '" + propertyName + "' is empty");
+                    }
+                } else {
+                    log.debug("Treblle: Property '" + propertyName + "' is null");
+                }
+            } catch (Exception e) {
+                log.warn("Treblle: Error reading property '" + propertyName + "': " + e.getMessage());
+            }
+        }
+
+        // If all direct property lookups fail, log available properties for debugging
+        if (log.isInfoEnabled()) {
+            logAvailablePropertiesForName(messageContext);
+        }
+
+        log.warn("Treblle: Unable to determine API name. The 'internal_name' field will be null.");
+        return null;
+    }
+
+    /**
+     * Get the API UUID by trying multiple MessageContext properties.
+     * This method attempts several different property names to maximize compatibility across
+     * different WSO2 API Manager versions.
+     *
+     * @param messageContext the Synapse message context
+     * @return the API UUID or null if not found
+     */
+    private String getApiUuid(MessageContext messageContext) {
+        // List of property names to try, in order of preference
+        String[] propertyNames = {
+            "API_UUID",                // Primary property for API UUID
+            "api.uuid",                // Alternative property name
+            "__api.uuid",              // Internal property with double underscore prefix
+            "API_IDENTIFIER",          // API Identifier object (may contain UUID)
+            "ELECTED_API_UUID",        // Elected API UUID
+            "org.wso2.carbon.apimgt.gateway.handlers.api.uuid",  // Fully qualified property
+            "apiUUID"                  // CamelCase variant
+        };
+
+        log.info("Treblle: Attempting to retrieve API UUID...");
+
+        // Try each property name in sequence
+        for (String propertyName : propertyNames) {
+            try {
+                Object propertyValue = messageContext.getProperty(propertyName);
+                if (propertyValue != null) {
+                    String apiUuid = propertyValue.toString();
+                    if (!apiUuid.isEmpty()) {
+                        log.info("Treblle: Found API UUID using property '" + propertyName + "': " + apiUuid);
+                        return apiUuid;
+                    } else {
+                        log.debug("Treblle: Property '" + propertyName + "' is empty");
+                    }
+                } else {
+                    log.debug("Treblle: Property '" + propertyName + "' is null");
+                }
+            } catch (Exception e) {
+                log.warn("Treblle: Error reading property '" + propertyName + "': " + e.getMessage());
+            }
+        }
+
+        // If all direct property lookups fail, log available properties for debugging
+        if (log.isInfoEnabled()) {
+            logAvailablePropertiesForUuid(messageContext);
+        }
+
+        log.warn("Treblle: Unable to determine API UUID. The 'internal_id' field will be null.");
+        return null;
+    }
+
+    /**
+     * Log all available properties in MessageContext that might contain API name information.
+     * This is useful for debugging and discovering which properties are available in different
+     * WSO2 API Manager versions.
+     *
+     * @param messageContext the Synapse message context
+     */
+    private void logAvailablePropertiesForName(MessageContext messageContext) {
+        log.info("Treblle: Listing all MessageContext properties containing 'NAME', 'API', or 'CONTEXT':");
+
+        try {
+            java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
+            int count = 0;
+
+            for (String key : propertyKeys) {
+                String upperKey = key.toUpperCase();
+                if (upperKey.contains("NAME") || upperKey.contains("API") ||
+                    upperKey.contains("CONTEXT")) {
+
+                    Object value = messageContext.getProperty(key);
+                    log.info("Treblle:   - " + key + " = " + value);
+                    count++;
+                }
+            }
+
+            if (count == 0) {
+                log.info("Treblle:   (No relevant properties found in MessageContext)");
+            }
+
+            // Also check Axis2 MessageContext properties
+            org.apache.axis2.context.MessageContext axis2MsgContext =
+                ((Axis2MessageContext) messageContext).getAxis2MessageContext();
+
+            log.info("Treblle: Listing relevant Axis2 MessageContext properties:");
+            int axis2Count = 0;
+
+            java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
+            while (propertyNames.hasNext()) {
+                String key = String.valueOf(propertyNames.next());
+                String upperKey = key.toUpperCase();
+
+                if (upperKey.contains("NAME") || upperKey.contains("API") ||
+                    upperKey.contains("CONTEXT")) {
+
+                    Object value = axis2MsgContext.getProperty(key);
+                    log.info("Treblle:   - " + key + " = " + value);
+                    axis2Count++;
+                }
+            }
+
+            if (axis2Count == 0) {
+                log.info("Treblle:   (No relevant properties found in Axis2 MessageContext)");
+            }
+
+        } catch (Exception e) {
+            log.error("Treblle: Error logging available properties for API name: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Log all available properties in MessageContext that might contain API UUID information.
+     * This is useful for debugging and discovering which properties are available in different
+     * WSO2 API Manager versions.
+     *
+     * @param messageContext the Synapse message context
+     */
+    private void logAvailablePropertiesForUuid(MessageContext messageContext) {
+        log.info("Treblle: Listing all MessageContext properties containing 'UUID', 'API', or 'IDENTIFIER':");
+
+        try {
+            java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
+            int count = 0;
+
+            for (String key : propertyKeys) {
+                String upperKey = key.toUpperCase();
+                if (upperKey.contains("UUID") || upperKey.contains("API") ||
+                    upperKey.contains("IDENTIFIER") || upperKey.contains("ID")) {
+
+                    Object value = messageContext.getProperty(key);
+                    log.info("Treblle:   - " + key + " = " + value);
+                    count++;
+                }
+            }
+
+            if (count == 0) {
+                log.info("Treblle:   (No relevant properties found in MessageContext)");
+            }
+
+            // Also check Axis2 MessageContext properties
+            org.apache.axis2.context.MessageContext axis2MsgContext =
+                ((Axis2MessageContext) messageContext).getAxis2MessageContext();
+
+            log.info("Treblle: Listing relevant Axis2 MessageContext properties:");
+            int axis2Count = 0;
+
+            java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
+            while (propertyNames.hasNext()) {
+                String key = String.valueOf(propertyNames.next());
+                String upperKey = key.toUpperCase();
+
+                if (upperKey.contains("UUID") || upperKey.contains("API") ||
+                    upperKey.contains("IDENTIFIER") || upperKey.contains("ID")) {
+
+                    Object value = axis2MsgContext.getProperty(key);
+                    log.info("Treblle:   - " + key + " = " + value);
+                    axis2Count++;
+                }
+            }
+
+            if (axis2Count == 0) {
+                log.info("Treblle:   (No relevant properties found in Axis2 MessageContext)");
+            }
+
+        } catch (Exception e) {
+            log.error("Treblle: Error logging available properties for UUID: " + e.getMessage(), e);
+        }
     }
 
     /**

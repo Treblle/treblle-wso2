@@ -21,12 +21,6 @@ public class Request {
   @JsonProperty("route_path")
   private String routePath;
 
-  @JsonProperty("internal_id")
-  private String internalId;
-
-  @JsonProperty("internal_name")
-  private String internalName;
-
   public String getTimestamp() {
     return timestamp;
   }
@@ -89,21 +83,5 @@ public class Request {
 
   public void setRoutePath(String routePath) {
     this.routePath = routePath;
-  }
-
-  public String getInternalId() {
-    return internalId;
-  }
-
-  public void setInternalId(String internalId) {
-    this.internalId = internalId;
-  }
-
-  public String getInternalName() {
-    return internalName;
-  }
-
-  public void setInternalName(String internalName) {
-    this.internalName = internalName;
   }
 }

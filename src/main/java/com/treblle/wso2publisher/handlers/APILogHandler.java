@@ -280,15 +280,7 @@ public class APILogHandler extends AbstractSynapseHandler {
         String routePath = (String) messageContext.getProperty(TREBLLE_ROUTE_PATH);
         request.setRoutePath(routePath);
 
-        // Set the API UUID (internal_id)
-        String apiUuid = (String) messageContext.getProperty(TREBLLE_API_UUID);
-        request.setInternalId(apiUuid);
-
-        // Set the API name (internal_name)
-        String apiName = (String) messageContext.getProperty(TREBLLE_API_NAME);
-        request.setInternalName(apiName);
-
-          // Create and initialize the Response object
+        // Create and initialize the Response object
         final Data data = new Data();
         final Response response = new Response();
 
@@ -347,6 +339,14 @@ public class APILogHandler extends AbstractSynapseHandler {
         // Create and initialize the TrebllePayload object
         TrebllePayload payload = new TrebllePayload();
         payload.setData(data);
+
+        // Set the API UUID (internal_id) at root level
+        String apiUuid = (String) messageContext.getProperty(TREBLLE_API_UUID);
+        payload.setInternalId(apiUuid);
+
+        // Set the API name (internal_name) at root level
+        String apiName = (String) messageContext.getProperty(TREBLLE_API_NAME);
+        payload.setInternalName(apiName);
 
         return payload;
     }

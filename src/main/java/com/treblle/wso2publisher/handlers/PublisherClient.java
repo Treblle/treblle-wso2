@@ -209,7 +209,7 @@ public class PublisherClient {
         requestBody.put("sdk_token", trebllePayload.getSdkToken());
         requestBody.put("api_key", trebllePayload.getApiKey());
         requestBody.put("sdk", "wso2");
-        requestBody.put("version", 20);
+        requestBody.put("version", TrebllePayload.TREBLLE_VERSION);
 
         org.json.JSONObject data = new org.json.JSONObject();
         data.put("language", new org.json.JSONObject(trebllePayload.getData().getLanguage()));

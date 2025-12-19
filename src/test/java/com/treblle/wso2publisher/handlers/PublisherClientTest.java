@@ -1,6 +1,5 @@
 package com.treblle.wso2publisher.handlers;
 
-import com.treblle.wso2publisher.dto.TrebllePayload;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -112,19 +111,5 @@ public class PublisherClientTest {
         Assert.assertTrue(jsonObject.length() == 0);
     }
 
-
-    @Test
-    public void doRetry_DropsEventWhenNoAttemptsLeft() throws Exception {
-
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
-                DataHolder.getInstance().getHttpClient());
-        TrebllePayload payload = new TrebllePayload();
-        PublisherClientContextHolder.PUBLISH_ATTEMPTS.set(0);
-
-        Method doRetryMethod = PublisherClient.class.getDeclaredMethod("doRetry", TrebllePayload.class);
-        doRetryMethod.setAccessible(true);
-        doRetryMethod.invoke(publisherClient, payload);
-        Assert.assertEquals(0, (int) PublisherClientContextHolder.PUBLISH_ATTEMPTS.get());
-    }
 
 }

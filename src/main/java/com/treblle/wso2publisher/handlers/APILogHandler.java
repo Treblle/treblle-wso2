@@ -68,6 +68,15 @@ public class APILogHandler extends AbstractSynapseHandler {
             org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                     .getAxis2MessageContext();
 
+            // Skip OPTIONS requests (CORS preflight) - they're not actual API usage
+            String httpMethod = (String) axis2MsgContext.getProperty(HTTP_METHOD);
+            if ("OPTIONS".equalsIgnoreCase(httpMethod)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Skipping OPTIONS request - CORS preflight not tracked");
+                }
+                return true;
+            }
+
             // Retrieve and set request headers
             Map<String, String> headersMap = getHeaders(messageContext);
             messageContext.setProperty(TREBLLE_REQ_HEADERS, headersMap);
@@ -138,6 +147,15 @@ public class APILogHandler extends AbstractSynapseHandler {
     public boolean handleResponseOutFlow(MessageContext messageContext) {
         try {
             if (!isEnabledTenantDomain(messageContext)) {
+                return true;
+            }
+
+            // Skip if request method is not set (e.g., OPTIONS was filtered in handleRequestInFlow)
+            String method = (String) messageContext.getProperty(TREBLLE_REQ_METHOD);
+            if (method == null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Skipping response - request was filtered (likely OPTIONS)");
+                }
                 return true;
             }
 
@@ -475,14 +493,14 @@ public class APILogHandler extends AbstractSynapseHandler {
             "API_RESOURCE_PATTERN"        // Resource pattern property
         };
 
-        log.info("Treblle: Attempting to retrieve route path template...");
-
         // Try each property name in sequence
         for (String propertyName : propertyNames) {
             try {
                 String routePath = (String) messageContext.getProperty(propertyName);
                 if (routePath != null && !routePath.isEmpty()) {
-                    log.info("Treblle: Found route path using property '" + propertyName + "': " + routePath);
+                    if (log.isDebugEnabled()) {
+                        log.debug("Treblle: Found route path using property '" + propertyName + "': " + routePath);
+                    }
                     return routePath;
                 } else {
                     log.debug("Treblle: Property '" + propertyName + "' is " +
@@ -494,7 +512,7 @@ public class APILogHandler extends AbstractSynapseHandler {
         }
 
         // If all direct property lookups fail, log available properties for debugging
-        if (log.isInfoEnabled()) {
+        if (log.isDebugEnabled()) {
             logAvailableProperties(messageContext);
         }
 
@@ -722,7 +740,7 @@ public class APILogHandler extends AbstractSynapseHandler {
      * @param messageContext the Synapse message context
      */
     private void logAvailableProperties(MessageContext messageContext) {
-        log.info("Treblle: Listing all MessageContext properties containing 'REST', 'API', 'RESOURCE', or 'PATTERN':");
+        log.debug("Treblle: Listing all MessageContext properties containing 'REST', 'API', 'RESOURCE', or 'PATTERN':");
 
         try {
             java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
@@ -735,20 +753,20 @@ public class APILogHandler extends AbstractSynapseHandler {
                     upperKey.contains("URI") || upperKey.contains("TEMPLATE")) {
 
                     Object value = messageContext.getProperty(key);
-                    log.info("Treblle:   - " + key + " = " + value);
+                    log.debug("Treblle:   - " + key + " = " + value);
                     count++;
                 }
             }
 
             if (count == 0) {
-                log.info("Treblle:   (No relevant properties found in MessageContext)");
+                log.debug("Treblle:   (No relevant properties found in MessageContext)");
             }
 
             // Also check Axis2 MessageContext properties
             org.apache.axis2.context.MessageContext axis2MsgContext =
                 ((Axis2MessageContext) messageContext).getAxis2MessageContext();
 
-            log.info("Treblle: Listing relevant Axis2 MessageContext properties:");
+            log.debug("Treblle: Listing relevant Axis2 MessageContext properties:");
             int axis2Count = 0;
 
             java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
@@ -761,13 +779,13 @@ public class APILogHandler extends AbstractSynapseHandler {
                     upperKey.contains("URI") || upperKey.contains("TEMPLATE")) {
 
                     Object value = axis2MsgContext.getProperty(key);
-                    log.info("Treblle:   - " + key + " = " + value);
+                    log.debug("Treblle:   - " + key + " = " + value);
                     axis2Count++;
                 }
             }
 
             if (axis2Count == 0) {
-                log.info("Treblle:   (No relevant properties found in Axis2 MessageContext)");
+                log.debug("Treblle:   (No relevant properties found in Axis2 MessageContext)");
             }
 
         } catch (Exception e) {

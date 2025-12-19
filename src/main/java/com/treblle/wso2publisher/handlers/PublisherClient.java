@@ -75,31 +75,6 @@ public class PublisherClient {
     }
 
 
-    /**
-     * Method to retry publishing the payload.
-     * Uses a short delay to avoid blocking worker threads for too long.
-     *
-     * @param payload the TrebllePayload object to be published
-     */
-    private void doRetry(TrebllePayload payload) {
-
-        Integer currentAttempt = PublisherClientContextHolder.PUBLISH_ATTEMPTS.get();
-
-        if (currentAttempt > 0) {
-            currentAttempt -= 1;
-            PublisherClientContextHolder.PUBLISH_ATTEMPTS.set(currentAttempt);
-            try {
-                // Short delay to avoid overwhelming the server, but not blocking worker thread for long
-                Thread.sleep(1000);
-                publish(payload);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt(); // Restore interrupt status
-                log.error("Retry attempt interrupted at Publisher client", e);
-            }
-        } else if (currentAttempt == 0) {
-            log.error("Failed all retrying attempts. Event will be dropped for SDK token: " + sdkToken);
-        }
-    }
 
     /**
      * publish method is responsible for publishing the event.
@@ -130,6 +105,12 @@ public class PublisherClient {
             if (response != null) {
                 statusCode = response.getStatusLine().getStatusCode();
                 reasonPhrase = response.getStatusLine().getReasonPhrase();
+
+                // Log response details for debugging
+                if (log.isDebugEnabled()) {
+                    log.debug("Response status: " + statusCode + " " + reasonPhrase);
+                    log.debug("Response headers: " + java.util.Arrays.toString(response.getAllHeaders()));
+                }
             }
         } catch (IOException e) {
             log.error("Error closing HTTP response for SDK token: " + sdkToken, e);
@@ -139,10 +120,13 @@ public class PublisherClient {
             log.debug("Event successfully published.");
         } else if (statusCode >= 400 && statusCode < 500) {
             log.error("Event publishing failed for SDK token: " + sdkToken + " with status code: " + statusCode
-                    + " and reason: " + reasonPhrase);
+                    + " and reason: " + reasonPhrase + ". Event will be dropped.");
+        } else if (statusCode >= 500) {
+            log.error("Event publishing failed for SDK token: " + sdkToken + " with status code: " + statusCode
+                    + " and reason: " + reasonPhrase + ". Event will be dropped.");
         } else {
-            log.error("Event publishing failed for SDK token: " + sdkToken + ". Retrying...");
-            doRetry(payload);
+            log.error("Event publishing failed for SDK token: " + sdkToken + " with unexpected status code: "
+                    + statusCode + ". Event will be dropped.");
         }
 
     }
@@ -174,13 +158,22 @@ public class PublisherClient {
         }
 
         HttpPost httpPost = new HttpPost(baseUrl);
-        httpPost.setHeader("x-api-key", payload.getSdkToken());
+
+        String sdkTokenValue = payload.getSdkToken();
+        httpPost.setHeader("x-api-key", sdkTokenValue);
         httpPost.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
         httpPost.setHeader(HttpHeaders.ACCEPT_ENCODING, "gzip, deflate");
 
+        if (log.isDebugEnabled()) {
+            log.debug("Sending request to: " + baseUrl);
+            log.debug("x-api-key header set to: " + (sdkTokenValue != null ? sdkTokenValue : "NULL"));
+        }
+
         try {
             org.json.JSONObject requestBody = buildRequestBodyForTrebllePayload(payload);
-            log.debug("Treblle Payload - " + requestBody);
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle Payload - " + requestBody);
+            }
 
             // Create entity and wrap with gzip compression
             StringEntity uncompressed = new StringEntity(requestBody.toString());

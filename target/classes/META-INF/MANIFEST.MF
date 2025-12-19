@@ -1,5 +1,5 @@
 Manifest-Version: 1.0
-Bnd-LastModified: 1766147530328
+Bnd-LastModified: 1766148167046
 Build-Jdk: 25.0.1
 Built-By: cindreta
 Bundle-ManifestVersion: 2

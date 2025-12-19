@@ -145,8 +145,14 @@ public class APILogHandler extends AbstractSynapseHandler {
 
     @Override
     public boolean handleResponseOutFlow(MessageContext messageContext) {
+        if (log.isDebugEnabled()) {
+            log.debug("Treblle: handleResponseOutFlow called");
+        }
         try {
             if (!isEnabledTenantDomain(messageContext)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Treblle: Tenant domain not enabled, skipping");
+                }
                 return true;
             }
 
@@ -154,15 +160,24 @@ public class APILogHandler extends AbstractSynapseHandler {
             String method = (String) messageContext.getProperty(TREBLLE_REQ_METHOD);
             if (method == null) {
                 if (log.isDebugEnabled()) {
-                    log.debug("Skipping response - request was filtered (likely OPTIONS)");
+                    log.debug("Treblle: Request method is null, skipping (likely OPTIONS filtered)");
                 }
                 return true;
             }
 
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle: Creating payload for method: " + method);
+            }
             // Create a TrebllePayload object using the message context and gateway URL
             TrebllePayload payload = createPayload(messageContext, DataHolder.getInstance().getGatewayURL());
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle: Payload created, enqueueing...");
+            }
             // Add the payload to the event queue for processing
             DataHolder.getInstance().getEventQueue().put(payload);
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle: Payload enqueued successfully");
+            }
             return true;
         } catch (Exception e) {
             log.error("Treblle handler failed during response outflow. Continuing request processing.", e);

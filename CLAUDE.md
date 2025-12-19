@@ -47,8 +47,8 @@ The JAR artifact name includes the version suffix (e.g., `treblle-data-publisher
 
 ### Core Flow
 1. **APILogHandler** (extends AbstractSynapseHandler) - Main entry point that intercepts API traffic through WSO2's synapse handler mechanism
-   - `handleRequestInFlow()` - Captures request data (headers, body, IP, method, path)
-   - `handleRequestOutFlow()` - Captures API name
+   - `handleRequestInFlow()` - Captures request data (headers, body, IP, method, path, route_path)
+   - `handleRequestOutFlow()` - Captures API name (internal_name) and API UUID (internal_id)
    - `handleResponseOutFlow()` - Creates TrebllePayload and enqueues it
 
 2. **EventQueue** - Thread-safe bounded queue that holds events for asynchronous processing
@@ -77,7 +77,9 @@ ParallelQueueWorker → PublisherClient (mask + send) → Treblle Service
 ```
 
 ### Key DTOs
-- **TrebllePayload** - Root payload with api_key, sdk_token, and Data object
+- **TrebllePayload** - Root payload with api_key, sdk_token, internal_id, internal_name, version, sdk, and Data object
+  - `internal_id` - The WSO2 API UUID captured from MessageContext properties (e.g., `API_UUID`, `api.uuid`)
+  - `internal_name` - The WSO2 API name captured from MessageContext properties (e.g., `SYNAPSE_REST_API`, `API_NAME`)
 - **Data** - Contains Request, Response, Server, Language, and RuntimeError list
 - **Request** - Timestamp, IP, headers, body, method, URL, user agent, route_path
   - `route_path` - The API resource template pattern (e.g., `/users/{userId}/posts`) captured from `API_ELECTED_RESOURCE`
@@ -123,4 +125,6 @@ class="com.treblle.wso2publisher.handlers.APILogHandler"
 - **Retry Logic**: Uses `PublisherClientContextHolder.PUBLISH_ATTEMPTS` ThreadLocal for tracking retry attempts per thread
 - **IP Detection**: Checks `X-FORWARDED-FOR` header first, falls back to remote address from Axis2 context
 - **Thread Safety**: EventQueue uses atomic counters and blocking queues; worker threads handle interrupts gracefully for shutdown
-- **Route Path**: Captures `API_ELECTED_RESOURCE` from MessageContext which contains the API resource template pattern in OpenAPI format (e.g., `/users/{userId}/posts` instead of `/users/12345/posts`). This field may be null if the property is not available in the WSO2 context.
+- **Route Path**: Captures `API_ELECTED_RESOURCE` from MessageContext which contains the API resource template pattern in OpenAPI format (e.g., `/users/{userId}/posts` instead of `/users/12345/posts`). This field is stored in `data.request.route_path` and may be null if the property is not available in the WSO2 context.
+- **API UUID (internal_id)**: Attempts to capture the WSO2 API UUID by trying multiple MessageContext property names (`API_UUID`, `api.uuid`, `__api.uuid`, `API_IDENTIFIER`, etc.) to maximize compatibility across different WSO2 versions. This field is stored at the **root level** of the TrebllePayload (alongside `api_key`, `sdk_token`, etc.) and may be null if none of the property lookups succeed. When null, debug logs will list all available properties containing 'UUID', 'API', or 'IDENTIFIER' to help identify the correct property name for your WSO2 version.
+- **API Name (internal_name)**: Attempts to capture the WSO2 API name by trying multiple MessageContext property names (`SYNAPSE_REST_API`, `API_NAME`, `REST_API_NAME`, `api.name`, `REST_API_CONTEXT`, `API_CONTEXT`, etc.) to maximize compatibility across different WSO2 versions. This field is stored at the **root level** of the TrebllePayload (alongside `api_key`, `sdk_token`, etc.) and may be null if none of the property lookups succeed. When null, debug logs will list all available properties containing 'NAME', 'API', or 'CONTEXT' to help identify the correct property name for your WSO2 version.

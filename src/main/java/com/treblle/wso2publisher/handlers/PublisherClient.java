@@ -211,6 +211,14 @@ public class PublisherClient {
         requestBody.put("sdk", "wso2");
         requestBody.put("version", TrebllePayload.TREBLLE_VERSION);
 
+        // Add internal_id and internal_name if available
+        if (trebllePayload.getInternalId() != null) {
+            requestBody.put("internal_id", trebllePayload.getInternalId());
+        }
+        if (trebllePayload.getInternalName() != null) {
+            requestBody.put("internal_name", trebllePayload.getInternalName());
+        }
+
         org.json.JSONObject data = new org.json.JSONObject();
         data.put("language", new org.json.JSONObject(trebllePayload.getData().getLanguage()));
 
@@ -229,7 +237,7 @@ public class PublisherClient {
 
         JsonNode reqBody = trebllePayload.getData().getRequest().getBody();
         if (reqBody != null) {
-            request.put("body", new org.json.JSONObject(reqBody.toString()));
+            request.put("body", convertJsonNodeToOrgJson(reqBody));
         } else {
             request.put("body", new org.json.JSONObject());
         }
@@ -244,7 +252,7 @@ public class PublisherClient {
 
         JsonNode responseBody = trebllePayload.getData().getResponse().getBody();
         if (responseBody != null) {
-            response.put("body", new org.json.JSONObject(responseBody.toString()));
+            response.put("body", convertJsonNodeToOrgJson(responseBody));
         } else {
             response.put("body", new org.json.JSONObject());
         }
@@ -279,6 +287,39 @@ public class PublisherClient {
                     maskKeywordInJson((org.json.JSONObject) value, keyword);
                 }
             }
+        }
+    }
+
+    /**
+     * Convert a Jackson JsonNode to an appropriate org.json object type.
+     * Handles different node types (Object, Array, String, Number, Boolean, Null).
+     *
+     * @param node the Jackson JsonNode to convert
+     * @return the appropriate org.json type (JSONObject, JSONArray, String, Number, Boolean, or JSONObject.NULL)
+     */
+    private Object convertJsonNodeToOrgJson(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return org.json.JSONObject.NULL;
+        }
+
+        try {
+            if (node.isObject()) {
+                return new org.json.JSONObject(node.toString());
+            } else if (node.isArray()) {
+                return new org.json.JSONArray(node.toString());
+            } else if (node.isBoolean()) {
+                return node.asBoolean();
+            } else if (node.isNumber()) {
+                return node.numberValue();
+            } else if (node.isTextual()) {
+                return node.asText();
+            } else {
+                // Fallback: try to parse as generic JSON
+                return new org.json.JSONObject(node.toString());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to convert JsonNode to org.json type: " + e.getMessage() + ". Using empty object as fallback.");
+            return new org.json.JSONObject();
         }
     }
 

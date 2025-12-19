@@ -522,8 +522,6 @@ public class APILogHandler extends AbstractSynapseHandler {
             "org.wso2.carbon.apimgt.gateway.handlers.api.name"  // Fully qualified property
         };
 
-        log.info("Treblle: Attempting to retrieve API name...");
-
         // Try each property name in sequence
         for (String propertyName : propertyNames) {
             try {
@@ -531,13 +529,11 @@ public class APILogHandler extends AbstractSynapseHandler {
                 if (propertyValue != null) {
                     String apiName = propertyValue.toString();
                     if (!apiName.isEmpty()) {
-                        log.info("Treblle: Found API name using property '" + propertyName + "': " + apiName);
+                        if (log.isDebugEnabled()) {
+                            log.debug("Treblle: Found API name using property '" + propertyName + "': " + apiName);
+                        }
                         return apiName;
-                    } else {
-                        log.debug("Treblle: Property '" + propertyName + "' is empty");
                     }
-                } else {
-                    log.debug("Treblle: Property '" + propertyName + "' is null");
                 }
             } catch (Exception e) {
                 log.warn("Treblle: Error reading property '" + propertyName + "': " + e.getMessage());
@@ -545,7 +541,7 @@ public class APILogHandler extends AbstractSynapseHandler {
         }
 
         // If all direct property lookups fail, log available properties for debugging
-        if (log.isInfoEnabled()) {
+        if (log.isDebugEnabled()) {
             logAvailablePropertiesForName(messageContext);
         }
 
@@ -573,8 +569,6 @@ public class APILogHandler extends AbstractSynapseHandler {
             "apiUUID"                  // CamelCase variant
         };
 
-        log.info("Treblle: Attempting to retrieve API UUID...");
-
         // Try each property name in sequence
         for (String propertyName : propertyNames) {
             try {
@@ -582,13 +576,11 @@ public class APILogHandler extends AbstractSynapseHandler {
                 if (propertyValue != null) {
                     String apiUuid = propertyValue.toString();
                     if (!apiUuid.isEmpty()) {
-                        log.info("Treblle: Found API UUID using property '" + propertyName + "': " + apiUuid);
+                        if (log.isDebugEnabled()) {
+                            log.debug("Treblle: Found API UUID using property '" + propertyName + "': " + apiUuid);
+                        }
                         return apiUuid;
-                    } else {
-                        log.debug("Treblle: Property '" + propertyName + "' is empty");
                     }
-                } else {
-                    log.debug("Treblle: Property '" + propertyName + "' is null");
                 }
             } catch (Exception e) {
                 log.warn("Treblle: Error reading property '" + propertyName + "': " + e.getMessage());
@@ -596,7 +588,7 @@ public class APILogHandler extends AbstractSynapseHandler {
         }
 
         // If all direct property lookups fail, log available properties for debugging
-        if (log.isInfoEnabled()) {
+        if (log.isDebugEnabled()) {
             logAvailablePropertiesForUuid(messageContext);
         }
 
@@ -612,7 +604,7 @@ public class APILogHandler extends AbstractSynapseHandler {
      * @param messageContext the Synapse message context
      */
     private void logAvailablePropertiesForName(MessageContext messageContext) {
-        log.info("Treblle: Listing all MessageContext properties containing 'NAME', 'API', or 'CONTEXT':");
+        log.debug("Treblle: Listing all MessageContext properties containing 'NAME', 'API', or 'CONTEXT':");
 
         try {
             java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
@@ -624,20 +616,20 @@ public class APILogHandler extends AbstractSynapseHandler {
                     upperKey.contains("CONTEXT")) {
 
                     Object value = messageContext.getProperty(key);
-                    log.info("Treblle:   - " + key + " = " + value);
+                    log.debug("Treblle:   - " + key + " = " + value);
                     count++;
                 }
             }
 
             if (count == 0) {
-                log.info("Treblle:   (No relevant properties found in MessageContext)");
+                log.debug("Treblle:   (No relevant properties found in MessageContext)");
             }
 
             // Also check Axis2 MessageContext properties
             org.apache.axis2.context.MessageContext axis2MsgContext =
                 ((Axis2MessageContext) messageContext).getAxis2MessageContext();
 
-            log.info("Treblle: Listing relevant Axis2 MessageContext properties:");
+            log.debug("Treblle: Listing relevant Axis2 MessageContext properties:");
             int axis2Count = 0;
 
             java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
@@ -649,13 +641,13 @@ public class APILogHandler extends AbstractSynapseHandler {
                     upperKey.contains("CONTEXT")) {
 
                     Object value = axis2MsgContext.getProperty(key);
-                    log.info("Treblle:   - " + key + " = " + value);
+                    log.debug("Treblle:   - " + key + " = " + value);
                     axis2Count++;
                 }
             }
 
             if (axis2Count == 0) {
-                log.info("Treblle:   (No relevant properties found in Axis2 MessageContext)");
+                log.debug("Treblle:   (No relevant properties found in Axis2 MessageContext)");
             }
 
         } catch (Exception e) {
@@ -671,7 +663,7 @@ public class APILogHandler extends AbstractSynapseHandler {
      * @param messageContext the Synapse message context
      */
     private void logAvailablePropertiesForUuid(MessageContext messageContext) {
-        log.info("Treblle: Listing all MessageContext properties containing 'UUID', 'API', or 'IDENTIFIER':");
+        log.debug("Treblle: Listing all MessageContext properties containing 'UUID', 'API', or 'IDENTIFIER':");
 
         try {
             java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
@@ -680,23 +672,23 @@ public class APILogHandler extends AbstractSynapseHandler {
             for (String key : propertyKeys) {
                 String upperKey = key.toUpperCase();
                 if (upperKey.contains("UUID") || upperKey.contains("API") ||
-                    upperKey.contains("IDENTIFIER") || upperKey.contains("ID")) {
+                    upperKey.contains("IDENTIFIER")) {
 
                     Object value = messageContext.getProperty(key);
-                    log.info("Treblle:   - " + key + " = " + value);
+                    log.debug("Treblle:   - " + key + " = " + value);
                     count++;
                 }
             }
 
             if (count == 0) {
-                log.info("Treblle:   (No relevant properties found in MessageContext)");
+                log.debug("Treblle:   (No relevant properties found in MessageContext)");
             }
 
             // Also check Axis2 MessageContext properties
             org.apache.axis2.context.MessageContext axis2MsgContext =
                 ((Axis2MessageContext) messageContext).getAxis2MessageContext();
 
-            log.info("Treblle: Listing relevant Axis2 MessageContext properties:");
+            log.debug("Treblle: Listing relevant Axis2 MessageContext properties:");
             int axis2Count = 0;
 
             java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
@@ -705,16 +697,16 @@ public class APILogHandler extends AbstractSynapseHandler {
                 String upperKey = key.toUpperCase();
 
                 if (upperKey.contains("UUID") || upperKey.contains("API") ||
-                    upperKey.contains("IDENTIFIER") || upperKey.contains("ID")) {
+                    upperKey.contains("IDENTIFIER")) {
 
                     Object value = axis2MsgContext.getProperty(key);
-                    log.info("Treblle:   - " + key + " = " + value);
+                    log.debug("Treblle:   - " + key + " = " + value);
                     axis2Count++;
                 }
             }
 
             if (axis2Count == 0) {
-                log.info("Treblle:   (No relevant properties found in Axis2 MessageContext)");
+                log.debug("Treblle:   (No relevant properties found in Axis2 MessageContext)");
             }
 
         } catch (Exception e) {

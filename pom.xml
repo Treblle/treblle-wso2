@@ -185,19 +185,6 @@
     </properties>
 
     <profiles>
-        <!-- Profile for WSO2 API Manager 3.2.x -->
-        <profile>
-            <id>wso2am-3.2</id>
-            <properties>
-                <wso2.apim.version>6.7.206</wso2.apim.version>
-                <wso2.synapse.version>2.1.7-wso2v183</wso2.synapse.version>
-                <wso2.version.suffix>3.2.x</wso2.version.suffix>
-            </properties>
-            <build>
-                <finalName>treblle-data-publisher-3.2.x-${project.version}</finalName>
-            </build>
-        </profile>
-
         <!-- Profile for WSO2 API Manager 4.0.x -->
         <profile>
             <id>wso2am-4.0</id>

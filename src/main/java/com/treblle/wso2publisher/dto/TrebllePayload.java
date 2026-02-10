@@ -1,7 +1,10 @@
 package com.treblle.wso2publisher.dto;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.List;
 
 public class TrebllePayload {
 
@@ -19,6 +22,24 @@ public class TrebllePayload {
 
   @JsonProperty("internal_name")
   private String internalName;
+
+  @JsonProperty("tenant_id")
+  private String tenantId;
+
+  @JsonProperty("app_name")
+  private String appName;
+
+  @JsonProperty("app_id")
+  private String appId;
+
+  @JsonProperty("user_id")
+  private String userId;
+
+  @JsonProperty("api_publisher")
+  private String apiPublisher;
+
+  @JsonIgnore
+  private List<String> perApiMaskKeywords;
 
   private Data data;
 
@@ -70,5 +91,53 @@ public class TrebllePayload {
 
   public void setInternalName(String internalName) {
     this.internalName = internalName;
+  }
+
+  public String getTenantId() {
+    return tenantId;
+  }
+
+  public void setTenantId(String tenantId) {
+    this.tenantId = tenantId;
+  }
+
+  public String getAppName() {
+    return appName;
+  }
+
+  public void setAppName(String appName) {
+    this.appName = appName;
+  }
+
+  public String getAppId() {
+    return appId;
+  }
+
+  public void setAppId(String appId) {
+    this.appId = appId;
+  }
+
+  public String getUserId() {
+    return userId;
+  }
+
+  public void setUserId(String userId) {
+    this.userId = userId;
+  }
+
+  public String getApiPublisher() {
+    return apiPublisher;
+  }
+
+  public void setApiPublisher(String apiPublisher) {
+    this.apiPublisher = apiPublisher;
+  }
+
+  public List<String> getPerApiMaskKeywords() {
+    return perApiMaskKeywords;
+  }
+
+  public void setPerApiMaskKeywords(List<String> perApiMaskKeywords) {
+    this.perApiMaskKeywords = perApiMaskKeywords;
   }
 }

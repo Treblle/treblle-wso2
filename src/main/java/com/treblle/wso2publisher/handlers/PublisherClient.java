@@ -212,6 +212,23 @@ public class PublisherClient {
             requestBody.put("internal_name", trebllePayload.getInternalName());
         }
 
+        // Add enriched properties from the handler chain if available
+        if (trebllePayload.getTenantId() != null) {
+            requestBody.put("tenant_id", trebllePayload.getTenantId());
+        }
+        if (trebllePayload.getAppName() != null) {
+            requestBody.put("app_name", trebllePayload.getAppName());
+        }
+        if (trebllePayload.getAppId() != null) {
+            requestBody.put("app_id", trebllePayload.getAppId());
+        }
+        if (trebllePayload.getUserId() != null) {
+            requestBody.put("user_id", trebllePayload.getUserId());
+        }
+        if (trebllePayload.getApiPublisher() != null) {
+            requestBody.put("api_publisher", trebllePayload.getApiPublisher());
+        }
+
         org.json.JSONObject data = new org.json.JSONObject();
         data.put("language", new org.json.JSONObject(trebllePayload.getData().getLanguage()));
 
@@ -257,6 +274,15 @@ public class PublisherClient {
         for (String keyword : maskKeywordsList) {
             maskKeywordInJson(data, keyword);
         }
+
+        // Apply per-API mask keywords if configured
+        List<String> perApiKeywords = trebllePayload.getPerApiMaskKeywords();
+        if (perApiKeywords != null && !perApiKeywords.isEmpty()) {
+            for (String keyword : perApiKeywords) {
+                maskKeywordInJson(data, keyword);
+            }
+        }
+
         requestBody.put("data", data);
 
         return requestBody;

@@ -12,7 +12,6 @@ Treblle is an API intelligence platfom that helps developers, teams and organiza
 
 | WSO2 API Manager Version | Status | Maven Profile | APIM Version | Synapse Version |
 |-------------------------|---------|---------------|--------------|-----------------|
-| 3.2.x | ✅ Supported | `wso2am-3.2` | 6.7.206 | 2.1.7-wso2v183 |
 | 4.0.x | ✅ Supported | `wso2am-4.0` | 9.0.0 | 4.0.0-wso2v100 |
 | 4.1.x | ✅ Supported | `wso2am-4.1` | 9.1.0 | 4.0.0-wso2v102 |
 | 4.2.x | ✅ Supported | `wso2am-4.2` | 9.2.0 | 4.0.0-wso2v103 |
@@ -23,16 +22,15 @@ Treblle is an API intelligence platfom that helps developers, teams and organiza
 
 ## Overview
 
-This extension integrates with WSO2's [Global Synapse Handler](https://ei.docs.wso2.com/en/latest/micro-integrator/develop/customizations/creating-synapse-handlers/) to intercept API requests and responses at the gateway level. It operates asynchronously to ensure zero impact on API performance.
+This extension integrates with WSO2's API Handler chain (`AbstractHandler`) to intercept API requests and responses inside the gateway. By running after the `APIAuthenticationHandler` and `APIMgtUsageHandler`, it has access to enriched context including tenant domain, application info, subscriber data, and API publisher. It operates asynchronously to ensure zero impact on API performance.
 
 ### How It Works
 
-1. **Request Capture** - Intercepts incoming API requests, capturing headers, body, IP, method, and path
+1. **Request Capture** - Intercepts incoming API requests, capturing headers, body, IP, method, path, and enriched properties (tenant, application, user, publisher)
 2. **Response Capture** - Captures response data including status code, headers, body, and load time
 3. **Async Processing** - Adds captured data to a bounded in-memory queue (non-blocking)
 4. **Worker Threads** - Background threads dequeue events and send them to Treblle
-5. **Retry Logic** - Retries failed sends once (1 second delay), then drops the event
-6. **Data Masking** - Automatically masks sensitive fields before transmission
+5. **Data Masking** - Automatically masks sensitive fields before transmission
 
 ### Key Features
 
@@ -41,11 +39,12 @@ This extension integrates with WSO2's [Global Synapse Handler](https://ei.docs.w
 - **Load-balanced**: Distributes traffic across multiple Treblle endpoints
 - **Sensitive data masking**: Automatically redacts passwords, tokens, credit cards, etc.
 - **Multi-tenant support**: Filter by tenant domains
+- **Enriched context**: Captures application name, user ID, API publisher, and tenant domain
 - **Configurable**: Queue size, worker threads, custom endpoints, and masking rules
 
 ## Prerequisites
 
-- WSO2 API Manager 4.3.x installed
+- WSO2 API Manager 4.0.x or higher
 - Java 8 or higher
 - Maven 3.x (for building from source)
 - Treblle account with SDK token and API key ([Get started](https://treblle.com))
@@ -67,9 +66,6 @@ The JAR artifact will be created in the `target/` directory as `treblle-data-pub
 Use Maven profiles to build for specific WSO2 API Manager versions:
 
 ```sh
-# For WSO2 APIM 3.2.x
-mvn clean install -P wso2am-3.2
-
 # For WSO2 APIM 4.0.x
 mvn clean install -P wso2am-4.0
 
@@ -86,14 +82,14 @@ mvn clean install -P wso2am-4.3
 mvn clean install -P wso2am-4.4
 ```
 
-The JAR artifact name will include the version suffix (e.g., `treblle-data-publisher-3.2.x-1.0.0.jar`).
+The JAR artifact name will include the version suffix (e.g., `treblle-data-publisher-4.0.x-1.0.0.jar`).
 
 ### Build All Versions at Once
 
 To build artifacts for all supported versions:
 
 ```sh
-mvn clean install -P wso2am-3.2,wso2am-4.0,wso2am-4.1,wso2am-4.2,wso2am-4.3,wso2am-4.4
+mvn clean install -P wso2am-4.0,wso2am-4.1,wso2am-4.2,wso2am-4.3,wso2am-4.4
 ```
 
 **Important:** Ensure you deploy the correct JAR artifact that matches your WSO2 API Manager version.
@@ -109,24 +105,21 @@ Copy the built JAR artifact that matches your WSO2 version to your API Manager g
 cp target/treblle-data-publisher-4.3.x-1.0.0.jar <APIM_HOME>/repository/components/lib/
 
 # For other versions, use the appropriate JAR file
-# cp target/treblle-data-publisher-3.2.x-1.0.0.jar <APIM_HOME>/repository/components/lib/
 # cp target/treblle-data-publisher-4.0.x-1.0.0.jar <APIM_HOME>/repository/components/lib/
+# cp target/treblle-data-publisher-4.1.x-1.0.0.jar <APIM_HOME>/repository/components/lib/
 ```
 
 Replace `<APIM_HOME>` with your WSO2 API Manager installation directory.
 
 ### Step 2: Configure the Handler
 
-Add the following configuration at the **beginning** of `<APIM_HOME>/repository/conf/deployment.toml`:
+Add the Treblle handler to `<APIM_HOME>/repository/resources/conf/templates/repository/conf/synapse-config/velocity_template.xml`.
 
-**Important:** This must be placed at the beginning of the file to ensure the handler is registered before other handlers.
+Place it **after** `APIMgtUsageHandler` to ensure the handler has access to enriched properties (tenant domain, application info, user data):
 
-  ```toml
-  [synapse_handlers.treblle_publisher]
-  enabled=true
-  class="com.treblle.wso2publisher.handlers.APILogHandler"
-  ```
-
+```xml
+<handler class="com.treblle.wso2publisher.handlers.APILogHandler"/>
+```
 
 ### Step 3: Configure Logging (Optional but Recommended)
 
@@ -200,6 +193,21 @@ The following keywords are automatically masked in headers and request/response 
 
 Use `ADDITIONAL_MASK_KEYWORDS` to add more (e.g., `Authorization,X-API-Key,token`).
 
+### Per-API Masking Keywords
+
+In addition to global masking, you can define masking keywords on a per-API basis through WSO2 API custom properties. This allows each API to have its own set of sensitive fields masked, on top of the global defaults.
+
+**How to configure:**
+
+1. Open the WSO2 Publisher portal
+2. Navigate to your API and go to **Properties**
+3. Add a custom property:
+   - **Name:** `treblle_mask_keywords`
+   - **Value:** Comma-separated field names (e.g., `ssn,dob,account_number`)
+4. Save and re-deploy the API
+
+The per-API keywords are merged with (not replacing) the global defaults. They are cached by API UUID for performance and are never included in the JSON payload sent to Treblle.
+
 ### Custom Endpoint Configuration
 
 **Load Balancing (Default):**
@@ -234,7 +242,7 @@ ls -la <APIM_HOME>/repository/components/lib/treblle-data-publisher-*.jar
 # Ensure the version matches your WSO2 APIM version
 ```
 
-**Verify deployment.toml configuration** is at the beginning of the file.
+**Verify velocity_template.xml configuration** — ensure the handler entry is placed after `APIMgtUsageHandler`.
 
 ### No data in Treblle dashboard
 
@@ -313,4 +321,3 @@ If you have problems of any kind feel free to reach out via <https://treblle.com
 
 Copyright 2025, Treblle Inc. Licensed under the MIT license:
 http://www.opensource.org/licenses/mit-license.php
-

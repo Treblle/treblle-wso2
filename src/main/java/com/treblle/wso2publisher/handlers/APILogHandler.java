@@ -7,10 +7,10 @@ import java.nio.charset.Charset;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.commons.lang.StringUtils;
-import org.apache.synapse.AbstractSynapseHandler;
 import org.apache.synapse.MessageContext;
 import org.apache.synapse.commons.json.JsonUtil;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
+import org.apache.synapse.rest.AbstractHandler;
 import org.apache.synapse.transport.passthru.util.RelayUtils;
 import org.wso2.carbon.apimgt.gateway.APIMgtGatewayConstants;
 
@@ -30,12 +30,15 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
-public class APILogHandler extends AbstractSynapseHandler {
+public class APILogHandler extends AbstractHandler {
 
     private static final String HEADER_X_FORWARDED_FOR = "X-FORWARDED-FOR";
     private static final String TREBLLE_REQ_HEADERS = "TREBLLE_REQ_HEADERS";
@@ -46,6 +49,12 @@ public class APILogHandler extends AbstractSynapseHandler {
     private static final String TREBLLE_REQ_IP = "TREBLLE_REQ_IP";
     private static final String TREBLLE_ROUTE_PATH = "TREBLLE_ROUTE_PATH";
     private static final String TREBLLE_API_UUID = "TREBLLE_API_UUID";
+    private static final String TREBLLE_TENANT_DOMAIN = "TREBLLE_TENANT_DOMAIN";
+    private static final String TREBLLE_APP_NAME = "TREBLLE_APP_NAME";
+    private static final String TREBLLE_APP_ID = "TREBLLE_APP_ID";
+    private static final String TREBLLE_USER_ID = "TREBLLE_USER_ID";
+    private static final String TREBLLE_API_PUBLISHER = "TREBLLE_API_PUBLISHER";
+    private static final String TREBLLE_PER_API_MASK_KEYWORDS = "TREBLLE_PER_API_MASK_KEYWORDS";
     private static final String REST_URL_POSTFIX = "REST_URL_POSTFIX";
     private static final String HTTP_METHOD = "HTTP_METHOD";
     private static final String SYNAPSE_REST_API = "SYNAPSE_REST_API";
@@ -53,12 +62,13 @@ public class APILogHandler extends AbstractSynapseHandler {
     private static final String CARBON_LOCAL_IP = "carbon.local.ip";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ConcurrentHashMap<String, List<String>> apiMaskKeywordsCache = new ConcurrentHashMap<>();
     private static String serverIP;
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
 
     @Override
-    public boolean handleRequestInFlow(MessageContext messageContext) {
+    public boolean handleRequest(MessageContext messageContext) {
         try {
             if (!isEnabledTenantDomain(messageContext)) {
                 return true;
@@ -105,17 +115,7 @@ public class APILogHandler extends AbstractSynapseHandler {
                 log.debug("Captured route path: " + (routePath != null ? routePath : "NULL"));
             }
 
-            return true;
-        } catch (Exception e) {
-            log.error("Treblle handler failed during request inflow. Continuing request processing.", e);
-            return true; // Always return true to not block the request
-        }
-    }
-
-    @Override
-    public boolean handleRequestOutFlow(MessageContext messageContext) {
-        try {
-            // Retrieve and set the API name
+            // Capture API name (available immediately since auth handler already ran)
             String apiName = getApiName(messageContext);
             messageContext.setProperty(TREBLLE_API_NAME, apiName);
 
@@ -123,7 +123,7 @@ public class APILogHandler extends AbstractSynapseHandler {
                 log.debug("Captured API name: " + (apiName != null ? apiName : "NULL"));
             }
 
-            // Retrieve and set the API UUID
+            // Capture API UUID (available immediately since auth handler already ran)
             String apiUuid = getApiUuid(messageContext);
             messageContext.setProperty(TREBLLE_API_UUID, apiUuid);
 
@@ -131,22 +131,42 @@ public class APILogHandler extends AbstractSynapseHandler {
                 log.debug("Captured API UUID: " + (apiUuid != null ? apiUuid : "NULL"));
             }
 
+            // Capture enriched properties from the handler chain (available after APIAuthenticationHandler)
+            String tenantDomain = (String) messageContext.getProperty("tenant.info.domain");
+            messageContext.setProperty(TREBLLE_TENANT_DOMAIN, tenantDomain);
+
+            String appName = (String) messageContext.getProperty("APPLICATION_NAME");
+            messageContext.setProperty(TREBLLE_APP_NAME, appName);
+
+            String appId = (String) messageContext.getProperty("APPLICATION_ID");
+            messageContext.setProperty(TREBLLE_APP_ID, appId);
+
+            String userId = (String) messageContext.getProperty("END_USER_NAME");
+            messageContext.setProperty(TREBLLE_USER_ID, userId);
+
+            String apiPublisher = (String) messageContext.getProperty("API_PUBLISHER");
+            messageContext.setProperty(TREBLLE_API_PUBLISHER, apiPublisher);
+
+            // Capture per-API mask keywords from WSO2 custom properties
+            List<String> perApiMaskKeywords = getPerApiMaskKeywords(messageContext, apiUuid);
+            if (perApiMaskKeywords != null && !perApiMaskKeywords.isEmpty()) {
+                messageContext.setProperty(TREBLLE_PER_API_MASK_KEYWORDS, perApiMaskKeywords);
+                if (log.isDebugEnabled()) {
+                    log.debug("Treblle: Per-API mask keywords for API " + apiUuid + ": " + perApiMaskKeywords);
+                }
+            }
+
             return true;
         } catch (Exception e) {
-            log.error("Treblle handler failed during request outflow. Continuing request processing.", e);
+            log.error("Treblle handler failed during request handling. Continuing request processing.", e);
             return true; // Always return true to not block the request
         }
     }
 
     @Override
-    public boolean handleResponseInFlow(MessageContext messageContext) {
-        return true;
-    }
-
-    @Override
-    public boolean handleResponseOutFlow(MessageContext messageContext) {
+    public boolean handleResponse(MessageContext messageContext) {
         if (log.isDebugEnabled()) {
-            log.debug("Treblle: handleResponseOutFlow called");
+            log.debug("Treblle: handleResponse called");
         }
         try {
             if (!isEnabledTenantDomain(messageContext)) {
@@ -156,7 +176,7 @@ public class APILogHandler extends AbstractSynapseHandler {
                 return true;
             }
 
-            // Skip if request method is not set (e.g., OPTIONS was filtered in handleRequestInFlow)
+            // Skip if request method is not set (e.g., OPTIONS was filtered in handleRequest)
             String method = (String) messageContext.getProperty(TREBLLE_REQ_METHOD);
             if (method == null) {
                 if (log.isDebugEnabled()) {
@@ -180,7 +200,7 @@ public class APILogHandler extends AbstractSynapseHandler {
             }
             return true;
         } catch (Exception e) {
-            log.error("Treblle handler failed during response outflow. Continuing request processing.", e);
+            log.error("Treblle handler failed during response handling. Continuing request processing.", e);
             return true; // Always return true to not block the request
         }
     }
@@ -380,6 +400,20 @@ public class APILogHandler extends AbstractSynapseHandler {
         // Set the API name (internal_name) at root level
         String apiName = (String) messageContext.getProperty(TREBLLE_API_NAME);
         payload.setInternalName(apiName);
+
+        // Set enriched properties from the handler chain
+        payload.setTenantId((String) messageContext.getProperty(TREBLLE_TENANT_DOMAIN));
+        payload.setAppName((String) messageContext.getProperty(TREBLLE_APP_NAME));
+        payload.setAppId((String) messageContext.getProperty(TREBLLE_APP_ID));
+        payload.setUserId((String) messageContext.getProperty(TREBLLE_USER_ID));
+        payload.setApiPublisher((String) messageContext.getProperty(TREBLLE_API_PUBLISHER));
+
+        // Set per-API mask keywords for downstream masking
+        @SuppressWarnings("unchecked")
+        List<String> perApiMaskKeywords = (List<String>) messageContext.getProperty(TREBLLE_PER_API_MASK_KEYWORDS);
+        if (perApiMaskKeywords != null && !perApiMaskKeywords.isEmpty()) {
+            payload.setPerApiMaskKeywords(perApiMaskKeywords);
+        }
 
         return payload;
     }
@@ -627,6 +661,88 @@ public class APILogHandler extends AbstractSynapseHandler {
 
         log.warn("Treblle: Unable to determine API UUID. The 'internal_id' field will be null.");
         return null;
+    }
+
+    /**
+     * Get per-API mask keywords from WSO2 custom properties.
+     * Uses a cache keyed by API UUID to avoid re-parsing on every request.
+     * Tries multiple MessageContext property names to find the custom property.
+     *
+     * @param messageContext the Synapse message context
+     * @param apiUuid the API UUID for cache keying (may be null)
+     * @return list of per-API mask keywords, or null if not configured
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> getPerApiMaskKeywords(MessageContext messageContext, String apiUuid) {
+        // Check cache first if we have an API UUID
+        if (apiUuid != null) {
+            List<String> cached = apiMaskKeywordsCache.get(apiUuid);
+            if (cached != null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Treblle: Per-API mask keywords cache hit for API " + apiUuid);
+                }
+                return cached;
+            }
+        }
+
+        String maskKeywordsValue = null;
+
+        // Try direct custom property first
+        Object directProp = messageContext.getProperty("treblle_mask_keywords");
+        if (directProp instanceof String && !((String) directProp).isEmpty()) {
+            maskKeywordsValue = (String) directProp;
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle: Found per-API mask keywords from 'treblle_mask_keywords': " + maskKeywordsValue);
+            }
+        }
+
+        // Try additionalProperties map
+        if (maskKeywordsValue == null) {
+            Object additionalProps = messageContext.getProperty("additionalProperties");
+            if (additionalProps instanceof Map) {
+                Object value = ((Map<String, Object>) additionalProps).get("treblle_mask_keywords");
+                if (value instanceof String && !((String) value).isEmpty()) {
+                    maskKeywordsValue = (String) value;
+                    if (log.isDebugEnabled()) {
+                        log.debug("Treblle: Found per-API mask keywords from 'additionalProperties': " + maskKeywordsValue);
+                    }
+                }
+            }
+        }
+
+        // Try api.ut.additionalProperties map
+        if (maskKeywordsValue == null) {
+            Object utAdditionalProps = messageContext.getProperty("api.ut.additionalProperties");
+            if (utAdditionalProps instanceof Map) {
+                Object value = ((Map<String, Object>) utAdditionalProps).get("treblle_mask_keywords");
+                if (value instanceof String && !((String) value).isEmpty()) {
+                    maskKeywordsValue = (String) value;
+                    if (log.isDebugEnabled()) {
+                        log.debug("Treblle: Found per-API mask keywords from 'api.ut.additionalProperties': " + maskKeywordsValue);
+                    }
+                }
+            }
+        }
+
+        if (maskKeywordsValue == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle: No per-API mask keywords found for API " + (apiUuid != null ? apiUuid : "unknown"));
+            }
+            return null;
+        }
+
+        // Parse comma-separated keywords, trimming whitespace
+        List<String> keywords = Arrays.stream(maskKeywordsValue.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+
+        // Cache by API UUID if available
+        if (apiUuid != null && !keywords.isEmpty()) {
+            apiMaskKeywordsCache.put(apiUuid, keywords);
+        }
+
+        return keywords.isEmpty() ? null : keywords;
     }
 
     /**

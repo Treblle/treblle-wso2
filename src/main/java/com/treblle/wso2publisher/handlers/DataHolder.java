@@ -68,7 +68,7 @@ public class DataHolder {
             String[] tenantDomainArray = tenantDomains.split(",");
 
             for (String tenantDomain : tenantDomainArray) {
-                enabledTenantDomains.put(tenantDomain, tenantDomain);
+                enabledTenantDomains.put(tenantDomain.trim(), tenantDomain.trim());
             }
         }
 
@@ -116,6 +116,22 @@ public class DataHolder {
 
     public Map<String, String> getEnabledTenantDomains() {
         return enabledTenantDomains;
+    }
+
+    /**
+     * Reload enabled tenant domains from system property/environment variable.
+     * Primarily used for testing purposes.
+     */
+    public void reloadEnabledTenantDomains() {
+        enabledTenantDomains.clear();
+        String tenantDomains = System.getProperty(TENANT_DOMAINS, System.getenv(TENANT_DOMAINS));
+        if (tenantDomains != null) {
+            String[] tenantDomainArray = tenantDomains.split(",");
+            for (String tenantDomain : tenantDomainArray) {
+                enabledTenantDomains.put(tenantDomain.trim(), tenantDomain.trim());
+            }
+        }
+        log.debug("Reloaded Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
     }
 
     /**

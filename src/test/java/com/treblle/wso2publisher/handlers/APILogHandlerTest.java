@@ -10,6 +10,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import com.treblle.wso2publisher.dto.TrebllePayload;
+import com.treblle.wso2publisher.handlers.DataHolder;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -227,6 +228,7 @@ public class APILogHandlerTest {
         Thread.sleep(1000);
 
         System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super,abc.com,xyz.com");
+        DataHolder.getInstance().reloadEnabledTenantDomains();
 
         // Create the APILogHandler instance
         APILogHandler apiLogHandler = new APILogHandler();

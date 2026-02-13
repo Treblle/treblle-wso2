@@ -113,13 +113,20 @@ Replace `<APIM_HOME>` with your WSO2 API Manager installation directory.
 
 ### Step 2: Configure the Handler
 
-Add the Treblle handler to `<APIM_HOME>/repository/resources/conf/templates/repository/conf/synapse-config/velocity_template.xml`.
+Add the Treblle handler to `<APIM_HOME>/repository/resources/api_templates/velocity_template.xml`.
 
-Place it **after** `APIMgtUsageHandler` to ensure the handler has access to enriched properties (tenant domain, application info, user data):
+Find the handlers section with the SchemaValidator and add the Treblle handler **after** it:
 
 ```xml
+                ## check and set enable schema validation
+                #if($enableSchemaValidation)
+<handler class="org.wso2.carbon.apimgt.gateway.handlers.security.SchemaValidator"/>
+                #end
 <handler class="com.treblle.wso2publisher.handlers.APILogHandler"/>
+</handlers>
 ```
+
+This ensures the handler runs in the proper sequence to access enriched properties (tenant domain, application info, user data, API publisher).
 
 ### Step 3: Configure Logging (Optional but Recommended)
 
@@ -242,7 +249,11 @@ ls -la <APIM_HOME>/repository/components/lib/treblle-data-publisher-*.jar
 # Ensure the version matches your WSO2 APIM version
 ```
 
-**Verify velocity_template.xml configuration** — ensure the handler entry is placed after `APIMgtUsageHandler`.
+**Verify velocity_template.xml configuration:**
+```sh
+grep -i "treblle" <APIM_HOME>/repository/resources/api_templates/velocity_template.xml
+```
+Ensure the handler entry is present in the handlers section after the SchemaValidator.
 
 ### No data in Treblle dashboard
 

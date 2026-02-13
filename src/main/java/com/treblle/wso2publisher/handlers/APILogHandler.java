@@ -74,6 +74,11 @@ public class APILogHandler extends AbstractHandler {
                 return true;
             }
 
+            // Log all MessageContext properties in debug mode for troubleshooting
+            if (log.isDebugEnabled()) {
+                logAllMessageContextProperties(messageContext);
+            }
+
             // Get the Axis2 message context from the Synapse message context
             org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                     .getAxis2MessageContext();
@@ -921,6 +926,106 @@ public class APILogHandler extends AbstractHandler {
 
         } catch (Exception e) {
             log.error("Treblle: Error logging available properties: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Log ALL available properties in MessageContext for comprehensive debugging.
+     * This method logs every single property from both Synapse and Axis2 MessageContext
+     * to help developers understand what data is available in their WSO2 environment.
+     * Only runs when log.isDebugEnabled() is true.
+     *
+     * @param messageContext the Synapse message context
+     */
+    private void logAllMessageContextProperties(MessageContext messageContext) {
+        log.debug("==================== TREBLLE DEBUG: ALL MESSAGE CONTEXT PROPERTIES ====================");
+
+        try {
+            // Log Synapse MessageContext properties
+            log.debug("--- Synapse MessageContext Properties ---");
+            java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
+
+            if (propertyKeys == null || propertyKeys.isEmpty()) {
+                log.debug("  (No properties found in Synapse MessageContext)");
+            } else {
+                log.debug("  Total Synapse properties: " + propertyKeys.size());
+                java.util.List<String> sortedKeys = new java.util.ArrayList<>(propertyKeys);
+                java.util.Collections.sort(sortedKeys);
+
+                for (String key : sortedKeys) {
+                    try {
+                        Object value = messageContext.getProperty(key);
+                        String valueStr;
+
+                        if (value == null) {
+                            valueStr = "null";
+                        } else if (value instanceof Map) {
+                            valueStr = "[Map with " + ((Map<?, ?>) value).size() + " entries] " + value.getClass().getName();
+                        } else if (value instanceof java.util.Collection) {
+                            valueStr = "[Collection with " + ((java.util.Collection<?>) value).size() + " items] " + value.getClass().getName();
+                        } else {
+                            valueStr = String.valueOf(value);
+                            // Truncate very long values
+                            if (valueStr.length() > 200) {
+                                valueStr = valueStr.substring(0, 200) + "... [truncated, total length: " + valueStr.length() + "]";
+                            }
+                        }
+
+                        log.debug("  [Synapse] " + key + " = " + valueStr + " (type: " + value.getClass().getName() + ")");
+                    } catch (Exception e) {
+                        log.debug("  [Synapse] " + key + " = <error reading value: " + e.getMessage() + ">");
+                    }
+                }
+            }
+
+            // Log Axis2 MessageContext properties
+            org.apache.axis2.context.MessageContext axis2MsgContext =
+                ((Axis2MessageContext) messageContext).getAxis2MessageContext();
+
+            log.debug("--- Axis2 MessageContext Properties ---");
+            java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
+
+            if (!propertyNames.hasNext()) {
+                log.debug("  (No properties found in Axis2 MessageContext)");
+            } else {
+                java.util.List<String> axis2Keys = new java.util.ArrayList<>();
+                while (propertyNames.hasNext()) {
+                    axis2Keys.add(String.valueOf(propertyNames.next()));
+                }
+                java.util.Collections.sort(axis2Keys);
+
+                log.debug("  Total Axis2 properties: " + axis2Keys.size());
+
+                for (String key : axis2Keys) {
+                    try {
+                        Object value = axis2MsgContext.getProperty(key);
+                        String valueStr;
+
+                        if (value == null) {
+                            valueStr = "null";
+                        } else if (value instanceof Map) {
+                            valueStr = "[Map with " + ((Map<?, ?>) value).size() + " entries] " + value.getClass().getName();
+                        } else if (value instanceof java.util.Collection) {
+                            valueStr = "[Collection with " + ((java.util.Collection<?>) value).size() + " items] " + value.getClass().getName();
+                        } else {
+                            valueStr = String.valueOf(value);
+                            // Truncate very long values
+                            if (valueStr.length() > 200) {
+                                valueStr = valueStr.substring(0, 200) + "... [truncated, total length: " + valueStr.length() + "]";
+                            }
+                        }
+
+                        log.debug("  [Axis2] " + key + " = " + valueStr + " (type: " + value.getClass().getName() + ")");
+                    } catch (Exception e) {
+                        log.debug("  [Axis2] " + key + " = <error reading value: " + e.getMessage() + ">");
+                    }
+                }
+            }
+
+            log.debug("==================== END TREBLLE DEBUG ====================");
+
+        } catch (Exception e) {
+            log.error("Treblle: Error logging all MessageContext properties: " + e.getMessage(), e);
         }
     }
 

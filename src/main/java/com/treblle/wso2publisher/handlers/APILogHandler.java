@@ -120,8 +120,9 @@ public class APILogHandler extends AbstractHandler {
             String reqPath = (String) axis2MsgContext.getProperty(REST_URL_POSTFIX);
             messageContext.setProperty(TREBLLE_REQ_PATH, reqPath);
 
-            // Retrieve and set the request URL from REST_FULL_REQUEST_PATH
-            messageContext.setProperty(TREBLLE_REQ_URL, messageContext.getProperty("REST_FULL_REQUEST_PATH"));
+            // Retrieve and set the full request URL
+            String fullUrl = buildFullRequestUrl(axis2MsgContext, headersMap, messageContext);
+            messageContext.setProperty(TREBLLE_REQ_URL, fullUrl);
 
             // Retrieve and set the source IP address
             String sourceIP = getSourceIP(axis2MsgContext, headersMap);
@@ -465,6 +466,33 @@ public class APILogHandler extends AbstractHandler {
         payload.setMetadata(metadata);
 
         return payload;
+    }
+
+    private String buildFullRequestUrl(org.apache.axis2.context.MessageContext axis2MsgContext,
+                                        Map<String, String> headersMap,
+                                        MessageContext messageContext) {
+        String path = (String) messageContext.getProperty("REST_FULL_REQUEST_PATH");
+        if (path == null) {
+            path = "";
+        }
+
+        String host = null;
+        for (Map.Entry<String, String> entry : headersMap.entrySet()) {
+            if ("host".equalsIgnoreCase(entry.getKey())) {
+                host = entry.getValue();
+                break;
+            }
+        }
+
+        String scheme = axis2MsgContext.getIncomingTransportName();
+        if (scheme == null) {
+            scheme = "http";
+        }
+
+        if (host != null) {
+            return scheme + "://" + host + path;
+        }
+        return path;
     }
 
     private Map<String, String> getHeaders(MessageContext messageContext) {

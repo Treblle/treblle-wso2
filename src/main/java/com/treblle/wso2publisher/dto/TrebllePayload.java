@@ -9,7 +9,7 @@ import com.treblle.wso2publisher.dto.Metadata;
 
 public class TrebllePayload {
 
-  public static final int TREBLLE_VERSION = 22;
+  public static final int TREBLLE_VERSION = 23;
   private static final String SDK_NAME = "wso2";
 
   @JsonProperty("api_key")

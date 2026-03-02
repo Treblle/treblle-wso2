@@ -212,23 +212,6 @@ public class PublisherClient {
             requestBody.put("internal_name", trebllePayload.getInternalName());
         }
 
-        // Add enriched properties from the handler chain if available
-        if (trebllePayload.getTenantId() != null) {
-            requestBody.put("tenant_id", trebllePayload.getTenantId());
-        }
-        if (trebllePayload.getAppName() != null) {
-            requestBody.put("app_name", trebllePayload.getAppName());
-        }
-        if (trebllePayload.getAppId() != null) {
-            requestBody.put("app_id", trebllePayload.getAppId());
-        }
-        if (trebllePayload.getUserId() != null) {
-            requestBody.put("user_id", trebllePayload.getUserId());
-        }
-        if (trebllePayload.getApiPublisher() != null) {
-            requestBody.put("api_publisher", trebllePayload.getApiPublisher());
-        }
-
         org.json.JSONObject data = new org.json.JSONObject();
         data.put("language", new org.json.JSONObject(trebllePayload.getData().getLanguage()));
 
@@ -284,6 +267,20 @@ public class PublisherClient {
         }
 
         requestBody.put("data", data);
+
+        // Always include metadata object (fields will be null if not populated)
+        com.treblle.wso2publisher.dto.Metadata metadata = trebllePayload.getMetadata();
+        if (metadata == null) {
+            metadata = new com.treblle.wso2publisher.dto.Metadata();
+        }
+        org.json.JSONObject metadataJson = new org.json.JSONObject();
+        metadataJson.put("api_version", metadata.getApiVersion() != null ? metadata.getApiVersion() : org.json.JSONObject.NULL);
+        metadataJson.put("customer", metadata.getCustomer() != null ? metadata.getCustomer() : org.json.JSONObject.NULL);
+        metadataJson.put("publisher", metadata.getPublisher() != null ? metadata.getPublisher() : org.json.JSONObject.NULL);
+        metadataJson.put("customer_ip", metadata.getCustomerIp() != null ? metadata.getCustomerIp() : org.json.JSONObject.NULL);
+        metadataJson.put("tenant", metadata.getTenant() != null ? metadata.getTenant() : org.json.JSONObject.NULL);
+        metadataJson.put("host", metadata.getHost() != null ? metadata.getHost() : org.json.JSONObject.NULL);
+        requestBody.put("metadata", metadataJson);
 
         return requestBody;
     }

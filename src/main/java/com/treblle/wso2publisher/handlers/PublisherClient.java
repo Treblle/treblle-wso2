@@ -171,9 +171,7 @@ public class PublisherClient {
 
         try {
             org.json.JSONObject requestBody = buildRequestBodyForTrebllePayload(payload);
-            if (log.isDebugEnabled()) {
-                log.debug("Treblle Payload - " + requestBody);
-            }
+            log.info("Treblle Payload - " + requestBody);
 
             // Create entity and wrap with gzip compression
             StringEntity uncompressed = new StringEntity(requestBody.toString());

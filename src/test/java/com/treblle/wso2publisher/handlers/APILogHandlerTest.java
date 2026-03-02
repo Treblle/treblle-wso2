@@ -17,7 +17,6 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static junit.framework.Assert.assertNotNull;
 import static org.junit.Assert.assertFalse;
@@ -35,7 +34,7 @@ public class APILogHandlerTest {
         ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
         MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
                 new Axis2SynapseEnvironment(cfgCtx, synCfg));
-        synCtx.setProperty("SYNAPSE_REST_API", "mock-v1");
+        synCtx.setProperty("api.ut.api", "mock-v1");
         synCtx.setProperty("tenant.info.domain", "carbon.super");
 
         Map<String, String> headers = new HashMap<>();
@@ -313,7 +312,7 @@ public class APILogHandlerTest {
         // Clear the cache before test
         Field cacheField = APILogHandler.class.getDeclaredField("apiMaskKeywordsCache");
         cacheField.setAccessible(true);
-        ((ConcurrentHashMap<?, ?>) cacheField.get(null)).clear();
+        ((Map<?, ?>) cacheField.get(null)).clear();
 
         APILogHandler apiLogHandler = new APILogHandler();
         boolean result = apiLogHandler.handleRequest(synCtx);
@@ -336,7 +335,7 @@ public class APILogHandlerTest {
         Field cacheField = APILogHandler.class.getDeclaredField("apiMaskKeywordsCache");
         cacheField.setAccessible(true);
         @SuppressWarnings("unchecked")
-        ConcurrentHashMap<String, List<String>> cache = (ConcurrentHashMap<String, List<String>>) cacheField.get(null);
+        Map<String, List<String>> cache = (Map<String, List<String>>) cacheField.get(null);
         cache.clear();
 
         SynapseConfiguration synCfg = new SynapseConfiguration();

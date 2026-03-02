@@ -121,7 +121,7 @@ public class APILogHandler extends AbstractHandler {
             messageContext.setProperty(TREBLLE_REQ_PATH, reqPath);
 
             // Retrieve and set the request URL from REST_FULL_REQUEST_PATH
-            messageContext.setProperty(TREBLLE_REQ_URL, axis2MsgContext.getProperty("REST_FULL_REQUEST_PATH"));
+            messageContext.setProperty(TREBLLE_REQ_URL, messageContext.getProperty("REST_FULL_REQUEST_PATH"));
 
             // Retrieve and set the source IP address
             String sourceIP = getSourceIP(axis2MsgContext, headersMap);

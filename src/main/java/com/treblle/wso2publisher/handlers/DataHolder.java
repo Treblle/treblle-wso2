@@ -38,6 +38,10 @@ public class DataHolder {
         if (System.getenv(TREBLLE_QUEUE_SIZE) != null) {
             try {
                 queueSize = Integer.parseInt(System.getenv(TREBLLE_QUEUE_SIZE));
+                if (queueSize < 1) {
+                    log.warn("TREBLLE_QUEUE_SIZE must be at least 1. Using default: " + DEFAULT_QUEUE_SIZE);
+                    queueSize = DEFAULT_QUEUE_SIZE;
+                }
             } catch (NumberFormatException e) {
                 log.warn("Invalid TREBLLE_QUEUE_SIZE value. Using default: " + DEFAULT_QUEUE_SIZE, e);
                 queueSize = DEFAULT_QUEUE_SIZE;

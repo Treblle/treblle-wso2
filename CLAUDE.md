@@ -116,14 +116,72 @@ Set the custom property `treblle_mask_keywords` on an API in the WSO2 Publisher 
 
 ## Deployment
 
-The version-specific JAR artifact must be deployed to `<gateway>/repository/components/lib` (ensure it matches your WSO2 APIM version) and the handler must be registered in `velocity_template.xml` **after** `APIMgtUsageHandler`:
+### Step 1: Deploy JAR
+The version-specific JAR artifact must be deployed to `<APIM_HOME>/repository/components/lib` (ensure it matches your WSO2 APIM version).
+
+### Step 2: Configure Handler
+Add the Treblle handler to the velocity template file at:
+```
+<APIM_HOME>/repository/resources/api_templates/velocity_template.xml
+```
+
+Add the handler **after** the SchemaValidator in the handlers section:
 
 ```xml
-<!-- velocity_template.xml — add AFTER APIMgtUsageHandler -->
+## check and set enable schema validation
+#if($enableSchemaValidation)
+<handler class="org.wso2.carbon.apimgt.gateway.handlers.security.SchemaValidator"/>
+#end
 <handler class="com.treblle.wso2publisher.handlers.APILogHandler"/>
+</handlers>
 ```
 
 This ensures the handler runs after authentication and usage handlers, giving access to all enriched properties (tenant domain, application info, user data, API publisher).
+
+## Troubleshooting and Debug Logging
+
+To enable comprehensive debug logging that shows ALL MessageContext properties available in your WSO2 environment:
+
+### Option 1: Runtime Configuration (WSO2 Management Console)
+1. Log in to WSO2 API Manager Management Console (https://localhost:9443/carbon)
+2. Navigate to **Configure > Logging**
+3. Add a new logger:
+   - Logger Name: `com.treblle.wso2publisher.handlers.APILogHandler`
+   - Log Level: `DEBUG`
+   - Additivity: `true`
+4. Click **Update**
+
+### Option 2: Configuration File (Persistent)
+Edit `<APIM_HOME>/repository/conf/log4j2.properties` and add:
+
+```properties
+logger.treblle.name = com.treblle.wso2publisher.handlers.APILogHandler
+logger.treblle.level = DEBUG
+logger.treblle.additivity = false
+logger.treblle.appenderRef.CARBON_LOGFILE.ref = CARBON_LOGFILE
+```
+
+Then add the logger to the loggers list:
+```properties
+loggers = ..., treblle
+```
+
+Restart WSO2 API Manager after making changes to `log4j2.properties`.
+
+### Debug Output
+When debug mode is enabled, each API request will log:
+- **All Synapse MessageContext properties** (sorted alphabetically)
+- **All Axis2 MessageContext properties** (sorted alphabetically)
+- Property names, values (truncated if > 200 chars), and data types
+- Clear section headers: `TREBLLE DEBUG: ALL MESSAGE CONTEXT PROPERTIES`
+
+This is invaluable for:
+- Identifying which property names are available in your WSO2 version
+- Troubleshooting missing API UUID, API name, or route path values
+- Understanding what enriched properties are populated by upstream handlers
+- Finding the correct property names for custom integrations
+
+**Note**: Debug logging generates verbose output. Only enable it temporarily for troubleshooting, not in production.
 
 ## Important Notes for Version Support
 
@@ -148,3 +206,4 @@ This ensures the handler runs after authentication and usage handlers, giving ac
 - **API Name (internal_name)**: Attempts to capture the WSO2 API name by trying multiple MessageContext property names (`SYNAPSE_REST_API`, `API_NAME`, `REST_API_NAME`, `api.name`, `REST_API_CONTEXT`, `API_CONTEXT`, etc.) to maximize compatibility across different WSO2 versions. This field is stored at the **root level** of the TrebllePayload (alongside `api_key`, `sdk_token`, etc.) and may be null if none of the property lookups succeed. When null, debug logs will list all available properties containing 'NAME', 'API', or 'CONTEXT' to help identify the correct property name for your WSO2 version.
 - **Enriched Properties**: Because the handler runs after `APIAuthenticationHandler`, it captures additional context: `tenant_id` (tenant domain), `app_name` (application name), `app_id` (application ID), `user_id` (end user), and `api_publisher` (API owner). These are stored at the root level of the TrebllePayload and may be null if the upstream handlers did not populate them.
 - **Per-API Masking**: API publishers can set `treblle_mask_keywords` as a custom property on their API in the WSO2 Publisher portal. The handler reads this property from the MessageContext, parses the comma-separated keywords, caches them by API UUID, and merges them with global masking keywords at publish time. The per-API keywords are transported on `TrebllePayload.perApiMaskKeywords` (a `@JsonIgnore` field, never serialized). The cache uses `ConcurrentHashMap` for thread safety.
+- **Debug Mode Logging**: When WSO2 debug logging is enabled for the handler (via `log4j2.properties` or runtime configuration), the handler logs ALL available MessageContext properties from both Synapse and Axis2 contexts on every request. This comprehensive logging includes property names, values (truncated if over 200 chars), and data types, making it invaluable for troubleshooting property availability across different WSO2 versions. The debug output is clearly marked with `TREBLLE DEBUG` headers for easy filtering in log files.

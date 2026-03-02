@@ -11,7 +11,6 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.treblle.wso2publisher.dto.RuntimeError;
 import com.treblle.wso2publisher.dto.TrebllePayload;
 
 import java.io.IOException;
@@ -41,7 +40,7 @@ public class PublisherClient {
     // Array of keywords to be masked in the payload
     private static final String[] MASK_KEYWORDS = {
             "password", "pwd", "secret", "password_confirmation", "cc", "card_number", "ccv", "ssn", "credit_score"};
-    List<String> maskKeywordsList = new ArrayList<>(Arrays.asList(MASK_KEYWORDS));
+    private final List<String> maskKeywordsList;
 
     // Pooled HTTP client for connection reuse
     private final CloseableHttpClient httpClient;
@@ -64,12 +63,18 @@ public class PublisherClient {
         this.apiKey = apiKey;
         this.httpClient = httpClient;
 
-        // Retrieve additional mask keywords from environment variable
+        // Build the final immutable mask keywords list
+        List<String> keywords = new ArrayList<>(Arrays.asList(MASK_KEYWORDS));
         String maskKeywordsEnv = System.getenv("ADDITIONAL_MASK_KEYWORDS");
-        if (maskKeywordsEnv != null) {
-            String[] maskKeywordsEnvArray = maskKeywordsEnv.split(",");
-            maskKeywordsList.addAll(Arrays.asList(maskKeywordsEnvArray));
+        if (maskKeywordsEnv != null && !maskKeywordsEnv.trim().isEmpty()) {
+            for (String kw : maskKeywordsEnv.split(",")) {
+                String trimmed = kw.trim();
+                if (!trimmed.isEmpty()) {
+                    keywords.add(trimmed);
+                }
+            }
         }
+        this.maskKeywordsList = java.util.Collections.unmodifiableList(keywords);
 
         log.debug("Masking keywords: " + maskKeywordsList);
     }
@@ -137,7 +142,7 @@ public class PublisherClient {
      * @return the next base URL in round-robin order
      */
     private static String getNextBaseUrl() {
-        int index = Math.abs(endpointIndex.getAndIncrement() % BASE_URLS.length);
+        int index = endpointIndex.getAndUpdate(i -> (i + 1) % BASE_URLS.length);
         return BASE_URLS[index];
     }
 
@@ -151,11 +156,6 @@ public class PublisherClient {
      * @return the HTTP response from the Treblle service
      */
     private CloseableHttpResponse maskAndSendPayload(TrebllePayload payload, String baseUrl) {
-
-        final List<RuntimeError> errors = new ArrayList<>(2);
-        if (!errors.isEmpty()) {
-            payload.getData().setErrors(errors);
-        }
 
         HttpPost httpPost = new HttpPost(baseUrl);
 

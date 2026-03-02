@@ -1,6 +1,7 @@
 package com.treblle.wso2publisher.handlers;
 
 import java.net.InetAddress;
+import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 
@@ -19,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.treblle.wso2publisher.dto.Data;
 import com.treblle.wso2publisher.dto.Language;
+import com.treblle.wso2publisher.dto.Metadata;
 import com.treblle.wso2publisher.dto.OperatingSystem;
 import com.treblle.wso2publisher.dto.Request;
 import com.treblle.wso2publisher.dto.Response;
@@ -35,7 +37,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class APILogHandler extends AbstractHandler {
@@ -55,14 +56,29 @@ public class APILogHandler extends AbstractHandler {
     private static final String TREBLLE_USER_ID = "TREBLLE_USER_ID";
     private static final String TREBLLE_API_PUBLISHER = "TREBLLE_API_PUBLISHER";
     private static final String TREBLLE_PER_API_MASK_KEYWORDS = "TREBLLE_PER_API_MASK_KEYWORDS";
+    private static final String TREBLLE_META_API_VERSION = "TREBLLE_META_API_VERSION";
+    private static final String TREBLLE_META_APP_ID = "TREBLLE_META_APP_ID";
+    private static final String TREBLLE_META_APP_NAME = "TREBLLE_META_APP_NAME";
+    private static final String TREBLLE_META_PUBLISHER = "TREBLLE_META_PUBLISHER";
+    private static final String TREBLLE_META_CUSTOMER_IP = "TREBLLE_META_CUSTOMER_IP";
+    private static final String TREBLLE_META_TENANT = "TREBLLE_META_TENANT";
+    private static final String TREBLLE_META_HOST = "TREBLLE_META_HOST";
+    private static final String TREBLLE_REQ_URL = "TREBLLE_REQ_URL";
     private static final String REST_URL_POSTFIX = "REST_URL_POSTFIX";
     private static final String HTTP_METHOD = "HTTP_METHOD";
-    private static final String SYNAPSE_REST_API = "SYNAPSE_REST_API";
     private static final String API_ELECTED_RESOURCE = "API_ELECTED_RESOURCE";
     private static final String CARBON_LOCAL_IP = "carbon.local.ip";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final ConcurrentHashMap<String, List<String>> apiMaskKeywordsCache = new ConcurrentHashMap<>();
+    private static final int MASK_KEYWORDS_CACHE_MAX_SIZE = 1000;
+    private static final Map<String, List<String>> apiMaskKeywordsCache = java.util.Collections.synchronizedMap(
+        new java.util.LinkedHashMap<String, List<String>>(MASK_KEYWORDS_CACHE_MAX_SIZE, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(java.util.Map.Entry<String, List<String>> eldest) {
+                return size() > MASK_KEYWORDS_CACHE_MAX_SIZE;
+            }
+        }
+    );
     private static String serverIP;
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
@@ -103,6 +119,9 @@ public class APILogHandler extends AbstractHandler {
             // Retrieve and set the request path
             String reqPath = (String) axis2MsgContext.getProperty(REST_URL_POSTFIX);
             messageContext.setProperty(TREBLLE_REQ_PATH, reqPath);
+
+            // Retrieve and set the request URL from api.ut.context
+            messageContext.setProperty(TREBLLE_REQ_URL, messageContext.getProperty("api.ut.context"));
 
             // Retrieve and set the source IP address
             String sourceIP = getSourceIP(axis2MsgContext, headersMap);
@@ -151,6 +170,15 @@ public class APILogHandler extends AbstractHandler {
 
             String apiPublisher = (String) messageContext.getProperty("API_PUBLISHER");
             messageContext.setProperty(TREBLLE_API_PUBLISHER, apiPublisher);
+
+            // Capture metadata fields
+            messageContext.setProperty(TREBLLE_META_API_VERSION, messageContext.getProperty("api.ut.api_version"));
+            messageContext.setProperty(TREBLLE_META_APP_ID, messageContext.getProperty("api.ut.application.id"));
+            messageContext.setProperty(TREBLLE_META_APP_NAME, messageContext.getProperty("api.ut.application.name"));
+            messageContext.setProperty(TREBLLE_META_PUBLISHER, messageContext.getProperty("api.ut.apiPublisher"));
+            messageContext.setProperty(TREBLLE_META_CUSTOMER_IP, messageContext.getProperty("api.analytics.user.ip"));
+            messageContext.setProperty(TREBLLE_META_TENANT, messageContext.getProperty("tenantDomain"));
+            messageContext.setProperty(TREBLLE_META_HOST, messageContext.getProperty("api.ut.hostName"));
 
             // Capture per-API mask keywords from WSO2 custom properties
             List<String> perApiMaskKeywords = getPerApiMaskKeywords(messageContext, apiUuid);
@@ -224,7 +252,6 @@ public class APILogHandler extends AbstractHandler {
             // Calculate the response time by subtracting the start time from the current
             // time
             responseTime = System.currentTimeMillis() - rtStartTime;
-            responseTime = responseTime * 1000;
         } catch (Exception e) {
             // Log any errors that occur during the calculation of the response time
             log.error("Error getResponseTime -  " + e.getMessage(), e);
@@ -252,9 +279,10 @@ public class APILogHandler extends AbstractHandler {
             return null;
         }
         // Ignore the port if present and only use the IP address
-        if (clientIP.contains(":") && clientIP.split(":").length == 2) {
+        String[] parts = clientIP.split(":");
+        if (parts.length == 2) {
             log.debug("Port will be ignored and only the IP address will be picked from " + clientIP);
-            clientIP = clientIP.split(":")[0];
+            clientIP = parts[0];
         }
 
         return clientIP;
@@ -291,7 +319,8 @@ public class APILogHandler extends AbstractHandler {
         server.setTimezone(TimeZone.getDefault().getID());
         server.setOs(os);
 
-        server.setSoftware("WSO2 v4.3");
+        String wso2Version = System.getProperty("carbon.product.version");
+        server.setSoftware(wso2Version != null ? "WSO2 " + wso2Version : "WSO2 API Manager");
         server.setSignature("");
         server.setProtocol("HTTP");
         server.setEncoding(Charset.defaultCharset().name());
@@ -321,16 +350,8 @@ public class APILogHandler extends AbstractHandler {
         }
         request.setMethod(method);
 
-        String reqURL = (String) messageContext.getProperty(TREBLLE_REQ_PATH);
-        if (reqURL == null) {
-            log.warn("Request URL is null. Setting a default value.");
-            reqURL = "/";
-        }
-        if (!reqURL.startsWith("/")) {
-            reqURL = "/" + reqURL;
-        }
-        String reqPath = gatewayURL + reqURL;
-        request.setUrl(reqPath);
+        String reqUrl = (String) messageContext.getProperty(TREBLLE_REQ_URL);
+        request.setUrl(reqUrl);
         request.setHeaders(reqHeaders);
         request.setBody(reqBody);
 
@@ -355,12 +376,15 @@ public class APILogHandler extends AbstractHandler {
 
             final RuntimeError runtimeError = new RuntimeError();
 
-            // check errors for 404
             Object errorMessageObj = messageContext.getProperty("ERROR_MESSAGE");
-            String errorType = errorMessageObj instanceof String ? (String) errorMessageObj : null;
+            String errorType = errorMessageObj instanceof String && !((String) errorMessageObj).isEmpty()
+                    ? (String) errorMessageObj
+                    : "HTTP " + responseCode;
 
             Object errorDetailObj = messageContext.getProperty("ERROR_DETAIL");
-            String errorDetail = errorDetailObj instanceof String ? (String) errorDetailObj : null;
+            String errorDetail = errorDetailObj instanceof String && !((String) errorDetailObj).isEmpty()
+                    ? (String) errorDetailObj
+                    : getHttpReasonPhrase(responseCode);
 
             runtimeError.setType(errorType);
             runtimeError.setMessage(errorDetail);
@@ -420,6 +444,26 @@ public class APILogHandler extends AbstractHandler {
             payload.setPerApiMaskKeywords(perApiMaskKeywords);
         }
 
+        // Build and set metadata
+        Metadata metadata = new Metadata();
+        metadata.setApiVersion(nullIfEmpty(messageContext.getProperty(TREBLLE_META_API_VERSION)));
+        metadata.setPublisher(nullIfEmpty(messageContext.getProperty(TREBLLE_META_PUBLISHER)));
+        metadata.setCustomerIp(nullIfEmpty(messageContext.getProperty(TREBLLE_META_CUSTOMER_IP)));
+        metadata.setTenant(nullIfEmpty(messageContext.getProperty(TREBLLE_META_TENANT)));
+        metadata.setHost(nullIfEmpty(messageContext.getProperty(TREBLLE_META_HOST)));
+
+        String metaAppId = nullIfEmpty(messageContext.getProperty(TREBLLE_META_APP_ID));
+        String metaAppName = nullIfEmpty(messageContext.getProperty(TREBLLE_META_APP_NAME));
+        if (metaAppId != null && metaAppName != null) {
+            metadata.setCustomer(metaAppId + "-" + metaAppName);
+        } else if (metaAppId != null) {
+            metadata.setCustomer(metaAppId);
+        } else if (metaAppName != null) {
+            metadata.setCustomer(metaAppName);
+        }
+
+        payload.setMetadata(metadata);
+
         return payload;
     }
 
@@ -446,42 +490,83 @@ public class APILogHandler extends AbstractHandler {
 
     private JsonNode getMessageBody(MessageContext messageContext) {
 
-        // Retrieve the Axis2 message context from the Synapse message context
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
 
-        // Initialize the JsonNode object to null
-        JsonNode jsonNode = null;
-
-        // Check if the Content-Type is application/json
-        Map<String, String> headers = getHeaders(messageContext);
-        if (!headers.containsKey("Content-Type") || !headers.get("Content-Type").contains("application/json")) {
-            log.debug("Content-Type is not application/json. Hence skipping the message body.");
-            return null;
-        }
         try {
-            // Build the message to ensure the payload is available
             RelayUtils.buildMessage(axis2MsgContext);
         } catch (Exception e) {
-            log.error(e.getMessage());
+            log.error("Error building message: " + e.getMessage());
             return null;
         }
 
-        // Convert the JSON payload to a string
-        String jsonPayloadToString = JsonUtil.jsonPayloadToString(axis2MsgContext);
-        if (jsonPayloadToString == null) {
-            log.error("JSON payload is null");
-            return null;
+        // Determine content type case-insensitively
+        String contentType = null;
+        Map<String, String> headers = getHeaders(messageContext);
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if ("content-type".equalsIgnoreCase(entry.getKey())) {
+                contentType = entry.getValue().toLowerCase();
+                break;
+            }
         }
-        // Parse the JSON string into a JsonNode using shared ObjectMapper
+
+        // Try JSON first — covers application/json requests and response body validation
         try {
-            jsonNode = OBJECT_MAPPER.readTree(jsonPayloadToString);
-        } catch (JsonProcessingException e) {
-            log.error(e.getMessage());
-            return null;
+            String jsonStr = JsonUtil.jsonPayloadToString(axis2MsgContext);
+            if (jsonStr != null && !jsonStr.isEmpty()) {
+                return OBJECT_MAPPER.readTree(jsonStr);
+            }
+        } catch (Exception e) {
+            log.debug("Body is not JSON: " + e.getMessage());
         }
 
-        return jsonNode;
+        // For URL-encoded and multipart, extract fields from the SOAP body element tree
+        if (contentType != null && (contentType.contains("application/x-www-form-urlencoded")
+                || contentType.contains("multipart/form-data"))) {
+            try {
+                org.apache.axiom.om.OMElement bodyElement =
+                        axis2MsgContext.getEnvelope().getBody().getFirstElement();
+                if (bodyElement != null) {
+                    // Try child elements first (Synapse message builder converts form fields to XML)
+                    Map<String, String> formData = new HashMap<>();
+                    java.util.Iterator<?> children = bodyElement.getChildElements();
+                    while (children.hasNext()) {
+                        org.apache.axiom.om.OMElement child = (org.apache.axiom.om.OMElement) children.next();
+                        formData.put(child.getLocalName(), child.getText());
+                    }
+                    if (!formData.isEmpty()) {
+                        return OBJECT_MAPPER.valueToTree(formData);
+                    }
+
+                    // Fallback: raw URL-encoded text in the body element
+                    String rawText = bodyElement.getText();
+                    if (rawText != null && !rawText.isEmpty()) {
+                        return parseUrlEncodedString(rawText);
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("Error parsing form body: " + e.getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    private JsonNode parseUrlEncodedString(String raw) {
+        Map<String, String> params = new HashMap<>();
+        for (String pair : raw.split("&")) {
+            int idx = pair.indexOf('=');
+            if (idx > 0) {
+                try {
+                    String key = URLDecoder.decode(pair.substring(0, idx), "UTF-8");
+                    String value = URLDecoder.decode(pair.substring(idx + 1), "UTF-8");
+                    params.put(key, value);
+                } catch (Exception e) {
+                    log.debug("Skipping malformed URL-encoded pair: " + pair);
+                }
+            }
+        }
+        return params.isEmpty() ? null : OBJECT_MAPPER.valueToTree(params);
     }
 
     private String getServerIpAddress() {
@@ -535,6 +620,41 @@ public class APILogHandler extends AbstractHandler {
      * @param messageContext the Synapse message context
      * @return the route path template (e.g., "/users/{userId}/posts") or null if not found
      */
+    private String getHttpReasonPhrase(int statusCode) {
+        switch (statusCode) {
+            case 400: return "Bad Request";
+            case 401: return "Unauthorized";
+            case 403: return "Forbidden";
+            case 404: return "Not Found";
+            case 405: return "Method Not Allowed";
+            case 406: return "Not Acceptable";
+            case 408: return "Request Timeout";
+            case 409: return "Conflict";
+            case 410: return "Gone";
+            case 411: return "Length Required";
+            case 412: return "Precondition Failed";
+            case 413: return "Payload Too Large";
+            case 414: return "URI Too Long";
+            case 415: return "Unsupported Media Type";
+            case 422: return "Unprocessable Entity";
+            case 423: return "Locked";
+            case 429: return "Too Many Requests";
+            case 500: return "Internal Server Error";
+            case 501: return "Not Implemented";
+            case 502: return "Bad Gateway";
+            case 503: return "Service Unavailable";
+            case 504: return "Gateway Timeout";
+            case 505: return "HTTP Version Not Supported";
+            default:  return "HTTP Error";
+        }
+    }
+
+    private String nullIfEmpty(Object value) {
+        if (value == null) return null;
+        String str = value.toString();
+        return str.isEmpty() ? null : str;
+    }
+
     private String getRoutePath(MessageContext messageContext) {
         // List of property names to try, in order of preference
         String[] propertyNames = {
@@ -583,41 +703,20 @@ public class APILogHandler extends AbstractHandler {
      * @return the API name or null if not found
      */
     private String getApiName(MessageContext messageContext) {
-        // List of property names to try, in order of preference
-        String[] propertyNames = {
-            "SYNAPSE_REST_API",        // Primary property for API name
-            "API_NAME",                // Alternative property name
-            "REST_API_NAME",           // REST API name property
-            "api.name",                // Lowercase variant
-            "REST_API_CONTEXT",        // API context (may contain name)
-            "API_CONTEXT",             // Alternative context property
-            "org.wso2.carbon.apimgt.gateway.handlers.api.name"  // Fully qualified property
-        };
-
-        // Try each property name in sequence
-        for (String propertyName : propertyNames) {
-            try {
-                Object propertyValue = messageContext.getProperty(propertyName);
-                if (propertyValue != null) {
-                    String apiName = propertyValue.toString();
-                    if (!apiName.isEmpty()) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("Treblle: Found API name using property '" + propertyName + "': " + apiName);
-                        }
-                        return apiName;
+        try {
+            Object propertyValue = messageContext.getProperty("api.ut.api");
+            if (propertyValue != null) {
+                String apiName = propertyValue.toString();
+                if (!apiName.isEmpty()) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("Treblle: Found API name using property 'api.ut.api': " + apiName);
                     }
+                    return apiName;
                 }
-            } catch (Exception e) {
-                log.warn("Treblle: Error reading property '" + propertyName + "': " + e.getMessage());
             }
+        } catch (Exception e) {
+            log.warn("Treblle: Error reading property 'api.ut.api': " + e.getMessage());
         }
-
-        // If all direct property lookups fail, log available properties for debugging
-        if (log.isDebugEnabled()) {
-            logAvailablePropertiesForName(messageContext);
-        }
-
-        log.warn("Treblle: Unable to determine API name. The 'internal_name' field will be null.");
         return null;
     }
 
@@ -750,64 +849,6 @@ public class APILogHandler extends AbstractHandler {
         return keywords.isEmpty() ? null : keywords;
     }
 
-    /**
-     * Log all available properties in MessageContext that might contain API name information.
-     * This is useful for debugging and discovering which properties are available in different
-     * WSO2 API Manager versions.
-     *
-     * @param messageContext the Synapse message context
-     */
-    private void logAvailablePropertiesForName(MessageContext messageContext) {
-        log.debug("Treblle: Listing all MessageContext properties containing 'NAME', 'API', or 'CONTEXT':");
-
-        try {
-            java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
-            int count = 0;
-
-            for (String key : propertyKeys) {
-                String upperKey = key.toUpperCase();
-                if (upperKey.contains("NAME") || upperKey.contains("API") ||
-                    upperKey.contains("CONTEXT")) {
-
-                    Object value = messageContext.getProperty(key);
-                    log.debug("Treblle:   - " + key + " = " + value);
-                    count++;
-                }
-            }
-
-            if (count == 0) {
-                log.debug("Treblle:   (No relevant properties found in MessageContext)");
-            }
-
-            // Also check Axis2 MessageContext properties
-            org.apache.axis2.context.MessageContext axis2MsgContext =
-                ((Axis2MessageContext) messageContext).getAxis2MessageContext();
-
-            log.debug("Treblle: Listing relevant Axis2 MessageContext properties:");
-            int axis2Count = 0;
-
-            java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
-            while (propertyNames.hasNext()) {
-                String key = String.valueOf(propertyNames.next());
-                String upperKey = key.toUpperCase();
-
-                if (upperKey.contains("NAME") || upperKey.contains("API") ||
-                    upperKey.contains("CONTEXT")) {
-
-                    Object value = axis2MsgContext.getProperty(key);
-                    log.debug("Treblle:   - " + key + " = " + value);
-                    axis2Count++;
-                }
-            }
-
-            if (axis2Count == 0) {
-                log.debug("Treblle:   (No relevant properties found in Axis2 MessageContext)");
-            }
-
-        } catch (Exception e) {
-            log.error("Treblle: Error logging available properties for API name: " + e.getMessage(), e);
-        }
-    }
 
     /**
      * Log all available properties in MessageContext that might contain API UUID information.

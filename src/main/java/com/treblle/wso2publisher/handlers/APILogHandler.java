@@ -52,7 +52,7 @@ public class APILogHandler extends AbstractHandler {
     private static final String TREBLLE_API_PUBLISHER = "TREBLLE_API_PUBLISHER";
     private static final String TREBLLE_PER_API_MASK_KEYWORDS = "TREBLLE_PER_API_MASK_KEYWORDS";
     private static final String TREBLLE_META_API_VERSION = "TREBLLE_META_API_VERSION";
-    private static final String TREBLLE_META_APP_ID = "TREBLLE_META_APP_ID";
+    private static final String TREBLLE_SUBSCRIBER = "TREBLLE_SUBSCRIBER";
     private static final String TREBLLE_META_APP_NAME = "TREBLLE_META_APP_NAME";
     private static final String TREBLLE_META_PUBLISHER = "TREBLLE_META_PUBLISHER";
     private static final String TREBLLE_META_CUSTOMER_IP = "TREBLLE_META_CUSTOMER_IP";
@@ -158,8 +158,7 @@ public class APILogHandler extends AbstractHandler {
             String appName = (String) messageContext.getProperty("APPLICATION_NAME");
             messageContext.setProperty(TREBLLE_APP_NAME, appName);
 
-
-            String appId = getClaim(headersMap.get("X-JWT-Assertion"),"subscriber");
+            String appId = (String) messageContext.getProperty("APPLICATION_ID");
             messageContext.setProperty(TREBLLE_APP_ID, appId);
 
             String userId = (String) messageContext.getProperty("END_USER_NAME");
@@ -170,7 +169,7 @@ public class APILogHandler extends AbstractHandler {
 
             // Capture metadata fields
             messageContext.setProperty(TREBLLE_META_API_VERSION, messageContext.getProperty("api.ut.api_version"));
-            messageContext.setProperty(TREBLLE_META_APP_ID, messageContext.getProperty(TREBLLE_APP_ID));
+            messageContext.setProperty(TREBLLE_SUBSCRIBER, messageContext.getProperty(getClaim(headersMap.get("X-JWT-Assertion"),"subscriber")));
             messageContext.setProperty(TREBLLE_META_APP_NAME, messageContext.getProperty("api.ut.application.name"));
             messageContext.setProperty(TREBLLE_META_PUBLISHER, messageContext.getProperty("api.ut.apiPublisher"));
             messageContext.setProperty(TREBLLE_META_CUSTOMER_IP, messageContext.getProperty("api.analytics.user.ip"));
@@ -449,14 +448,15 @@ public class APILogHandler extends AbstractHandler {
         metadata.setTenant(nullIfEmpty(messageContext.getProperty(TREBLLE_META_TENANT)));
         metadata.setHost(nullIfEmpty(messageContext.getProperty(TREBLLE_META_HOST)));
 
-        String metaAppId = nullIfEmpty(messageContext.getProperty(TREBLLE_META_APP_ID));
+        String subscriberName = nullIfEmpty(messageContext.getProperty(TREBLLE_SUBSCRIBER));
         String metaAppName = nullIfEmpty(messageContext.getProperty(TREBLLE_META_APP_NAME));
-        if (metaAppId != null && metaAppName != null) {
-            metadata.setCustomer(metaAppId + "-" + metaAppName);
-        } else if (metaAppId != null) {
-            metadata.setCustomer(metaAppId);
+        if (subscriberName != null && metaAppName != null) {
+            metadata.setCustomer( metaAppName+ "-" + subscriberName);
+        } else if (subscriberName != null) {
+            metadata.setCustomer(subscriberName);
         } else if (metaAppName != null) {
             metadata.setCustomer(metaAppName);
+
         }
 
         payload.setMetadata(metadata);

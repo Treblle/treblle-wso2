@@ -31,12 +31,7 @@ import com.treblle.wso2publisher.dto.TrebllePayload;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TimeZone;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class APILogHandler extends AbstractHandler {
@@ -163,7 +158,8 @@ public class APILogHandler extends AbstractHandler {
             String appName = (String) messageContext.getProperty("APPLICATION_NAME");
             messageContext.setProperty(TREBLLE_APP_NAME, appName);
 
-            String appId = (String) messageContext.getProperty("APPLICATION_ID");
+
+            String appId = getClaim(headersMap.get("X-JWT-Assertion"),"subscriber");
             messageContext.setProperty(TREBLLE_APP_ID, appId);
 
             String userId = (String) messageContext.getProperty("END_USER_NAME");
@@ -174,11 +170,11 @@ public class APILogHandler extends AbstractHandler {
 
             // Capture metadata fields
             messageContext.setProperty(TREBLLE_META_API_VERSION, messageContext.getProperty("api.ut.api_version"));
-            messageContext.setProperty(TREBLLE_META_APP_ID, messageContext.getProperty("api.ut.application.id"));
+            messageContext.setProperty(TREBLLE_META_APP_ID, messageContext.getProperty(TREBLLE_APP_ID));
             messageContext.setProperty(TREBLLE_META_APP_NAME, messageContext.getProperty("api.ut.application.name"));
             messageContext.setProperty(TREBLLE_META_PUBLISHER, messageContext.getProperty("api.ut.apiPublisher"));
             messageContext.setProperty(TREBLLE_META_CUSTOMER_IP, messageContext.getProperty("api.analytics.user.ip"));
-            messageContext.setProperty(TREBLLE_META_TENANT, messageContext.getProperty("tenantDomain"));
+            messageContext.setProperty(TREBLLE_META_TENANT, messageContext.getProperty(TREBLLE_TENANT_DOMAIN));
             messageContext.setProperty(TREBLLE_META_HOST, messageContext.getProperty("api.ut.hostName"));
 
             // Capture per-API mask keywords from WSO2 custom properties
@@ -1096,6 +1092,23 @@ public class APILogHandler extends AbstractHandler {
         } catch (Exception e) {
             log.error("Treblle: Error logging all MessageContext properties: " + e.getMessage(), e);
         }
+    }
+
+    private String getClaim(String jwt, String claim) {
+        String payload = jwt.split("\\.")[1];
+        String json = new String(Base64.getUrlDecoder().decode(payload));
+
+        String search = "\"" + claim + "\":";
+        int start = json.indexOf(search);
+        if (start == -1) return null;
+
+        start += search.length();
+        int end = json.indexOf(",", start);
+        if (end == -1) end = json.indexOf("}", start);
+
+        return json.substring(start, end)
+                .replace("\"", "")
+                .trim();
     }
 
 }

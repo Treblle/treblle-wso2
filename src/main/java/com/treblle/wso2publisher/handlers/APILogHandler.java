@@ -31,12 +31,7 @@ import com.treblle.wso2publisher.dto.TrebllePayload;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TimeZone;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class APILogHandler extends AbstractHandler {
@@ -57,7 +52,7 @@ public class APILogHandler extends AbstractHandler {
     private static final String TREBLLE_API_PUBLISHER = "TREBLLE_API_PUBLISHER";
     private static final String TREBLLE_PER_API_MASK_KEYWORDS = "TREBLLE_PER_API_MASK_KEYWORDS";
     private static final String TREBLLE_META_API_VERSION = "TREBLLE_META_API_VERSION";
-    private static final String TREBLLE_META_APP_ID = "TREBLLE_META_APP_ID";
+    private static final String TREBLLE_SUBSCRIBER = "TREBLLE_SUBSCRIBER";
     private static final String TREBLLE_META_APP_NAME = "TREBLLE_META_APP_NAME";
     private static final String TREBLLE_META_PUBLISHER = "TREBLLE_META_PUBLISHER";
     private static final String TREBLLE_META_CUSTOMER_IP = "TREBLLE_META_CUSTOMER_IP";
@@ -174,11 +169,11 @@ public class APILogHandler extends AbstractHandler {
 
             // Capture metadata fields
             messageContext.setProperty(TREBLLE_META_API_VERSION, messageContext.getProperty("api.ut.api_version"));
-            messageContext.setProperty(TREBLLE_META_APP_ID, messageContext.getProperty("api.ut.application.id"));
+            messageContext.setProperty(TREBLLE_SUBSCRIBER, messageContext.getProperty(getClaim(headersMap.get("X-JWT-Assertion"),"subscriber")));
             messageContext.setProperty(TREBLLE_META_APP_NAME, messageContext.getProperty("api.ut.application.name"));
             messageContext.setProperty(TREBLLE_META_PUBLISHER, messageContext.getProperty("api.ut.apiPublisher"));
             messageContext.setProperty(TREBLLE_META_CUSTOMER_IP, messageContext.getProperty("api.analytics.user.ip"));
-            messageContext.setProperty(TREBLLE_META_TENANT, messageContext.getProperty("tenantDomain"));
+            messageContext.setProperty(TREBLLE_META_TENANT, messageContext.getProperty(TREBLLE_TENANT_DOMAIN));
             messageContext.setProperty(TREBLLE_META_HOST, messageContext.getProperty("api.ut.hostName"));
 
             // Capture per-API mask keywords from WSO2 custom properties
@@ -453,14 +448,15 @@ public class APILogHandler extends AbstractHandler {
         metadata.setTenant(nullIfEmpty(messageContext.getProperty(TREBLLE_META_TENANT)));
         metadata.setHost(nullIfEmpty(messageContext.getProperty(TREBLLE_META_HOST)));
 
-        String metaAppId = nullIfEmpty(messageContext.getProperty(TREBLLE_META_APP_ID));
+        String subscriberName = nullIfEmpty(messageContext.getProperty(TREBLLE_SUBSCRIBER));
         String metaAppName = nullIfEmpty(messageContext.getProperty(TREBLLE_META_APP_NAME));
-        if (metaAppId != null && metaAppName != null) {
-            metadata.setCustomer(metaAppId + "-" + metaAppName);
-        } else if (metaAppId != null) {
-            metadata.setCustomer(metaAppId);
+        if (subscriberName != null && metaAppName != null) {
+            metadata.setCustomer( metaAppName+ "-" + subscriberName);
+        } else if (subscriberName != null) {
+            metadata.setCustomer(subscriberName);
         } else if (metaAppName != null) {
             metadata.setCustomer(metaAppName);
+
         }
 
         payload.setMetadata(metadata);
@@ -1096,6 +1092,23 @@ public class APILogHandler extends AbstractHandler {
         } catch (Exception e) {
             log.error("Treblle: Error logging all MessageContext properties: " + e.getMessage(), e);
         }
+    }
+
+    private String getClaim(String jwt, String claim) {
+        String payload = jwt.split("\\.")[1];
+        String json = new String(Base64.getUrlDecoder().decode(payload));
+
+        String search = "\"" + claim + "\":";
+        int start = json.indexOf(search);
+        if (start == -1) return null;
+
+        start += search.length();
+        int end = json.indexOf(",", start);
+        if (end == -1) end = json.indexOf("}", start);
+
+        return json.substring(start, end)
+                .replace("\"", "")
+                .trim();
     }
 
 }

@@ -1095,6 +1095,7 @@ public class APILogHandler extends AbstractHandler {
     }
 
     private String getClaim(String jwt, String claim) {
+        if (jwt == null) return null;
         String payload = jwt.split("\\.")[1];
         String json = new String(Base64.getUrlDecoder().decode(payload));
 

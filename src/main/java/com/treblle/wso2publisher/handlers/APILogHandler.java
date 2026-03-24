@@ -51,6 +51,7 @@ public class APILogHandler extends AbstractHandler {
     private static final String TREBLLE_USER_ID = "TREBLLE_USER_ID";
     private static final String TREBLLE_API_PUBLISHER = "TREBLLE_API_PUBLISHER";
     private static final String TREBLLE_PER_API_MASK_KEYWORDS = "TREBLLE_PER_API_MASK_KEYWORDS";
+    private static final String TREBLLE_DISABLE_RESPONSE_BODY = "TREBLLE_DISABLE_RESPONSE_BODY";
     private static final String TREBLLE_META_API_VERSION = "TREBLLE_META_API_VERSION";
     private static final String TREBLLE_SUBSCRIBER = "TREBLLE_SUBSCRIBER";
     private static final String TREBLLE_META_APP_NAME = "TREBLLE_META_APP_NAME";
@@ -74,6 +75,7 @@ public class APILogHandler extends AbstractHandler {
             }
         }
     );
+    private static final Map<String, Boolean> apiDisableResponseBodyCache = new java.util.concurrent.ConcurrentHashMap<>();
     private static String serverIP;
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
@@ -183,6 +185,13 @@ public class APILogHandler extends AbstractHandler {
                 if (log.isDebugEnabled()) {
                     log.debug("Treblle: Per-API mask keywords for API " + apiUuid + ": " + perApiMaskKeywords);
                 }
+            }
+
+            // Capture per-API disable response body flag from WSO2 custom properties
+            boolean disableResponseBody = getDisableResponseBody(messageContext, apiUuid);
+            messageContext.setProperty(TREBLLE_DISABLE_RESPONSE_BODY, disableResponseBody);
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle: Disable response body for API " + (apiUuid != null ? apiUuid : "unknown") + ": " + disableResponseBody);
             }
 
             return true;
@@ -438,6 +447,12 @@ public class APILogHandler extends AbstractHandler {
         List<String> perApiMaskKeywords = (List<String>) messageContext.getProperty(TREBLLE_PER_API_MASK_KEYWORDS);
         if (perApiMaskKeywords != null && !perApiMaskKeywords.isEmpty()) {
             payload.setPerApiMaskKeywords(perApiMaskKeywords);
+        }
+
+        // Set disable response body flag for downstream processing
+        Object disableResponseBodyProp = messageContext.getProperty(TREBLLE_DISABLE_RESPONSE_BODY);
+        if (Boolean.TRUE.equals(disableResponseBodyProp)) {
+            payload.setDisableResponseBody(true);
         }
 
         // Build and set metadata
@@ -871,6 +886,77 @@ public class APILogHandler extends AbstractHandler {
         }
 
         return keywords.isEmpty() ? null : keywords;
+    }
+
+    /**
+     * Get the per-API disable response body flag from WSO2 custom properties.
+     * Uses a cache keyed by API UUID to avoid re-parsing on every request.
+     * Tries multiple MessageContext property names to find the custom property.
+     *
+     * @param messageContext the Synapse message context
+     * @param apiUuid the API UUID for cache keying (may be null)
+     * @return true if response body capture should be disabled, false otherwise
+     */
+    @SuppressWarnings("unchecked")
+    private boolean getDisableResponseBody(MessageContext messageContext, String apiUuid) {
+        // Check cache first if we have an API UUID
+        if (apiUuid != null) {
+            Boolean cached = apiDisableResponseBodyCache.get(apiUuid);
+            if (cached != null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Treblle: Disable response body cache hit for API " + apiUuid + ": " + cached);
+                }
+                return cached;
+            }
+        }
+
+        String flagValue = null;
+
+        // Try direct custom property first
+        Object directProp = messageContext.getProperty("treblle_disable_response_body");
+        if (directProp instanceof String && !((String) directProp).isEmpty()) {
+            flagValue = (String) directProp;
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle: Found disable response body from 'treblle_disable_response_body': " + flagValue);
+            }
+        }
+
+        // Try additionalProperties map
+        if (flagValue == null) {
+            Object additionalProps = messageContext.getProperty("additionalProperties");
+            if (additionalProps instanceof Map) {
+                Object value = ((Map<String, Object>) additionalProps).get("treblle_disable_response_body");
+                if (value instanceof String && !((String) value).isEmpty()) {
+                    flagValue = (String) value;
+                    if (log.isDebugEnabled()) {
+                        log.debug("Treblle: Found disable response body from 'additionalProperties': " + flagValue);
+                    }
+                }
+            }
+        }
+
+        // Try api.ut.additionalProperties map
+        if (flagValue == null) {
+            Object utAdditionalProps = messageContext.getProperty("api.ut.additionalProperties");
+            if (utAdditionalProps instanceof Map) {
+                Object value = ((Map<String, Object>) utAdditionalProps).get("treblle_disable_response_body");
+                if (value instanceof String && !((String) value).isEmpty()) {
+                    flagValue = (String) value;
+                    if (log.isDebugEnabled()) {
+                        log.debug("Treblle: Found disable response body from 'api.ut.additionalProperties': " + flagValue);
+                    }
+                }
+            }
+        }
+
+        boolean result = "true".equalsIgnoreCase(flagValue);
+
+        // Cache by API UUID if available
+        if (apiUuid != null) {
+            apiDisableResponseBodyCache.put(apiUuid, result);
+        }
+
+        return result;
     }
 
 

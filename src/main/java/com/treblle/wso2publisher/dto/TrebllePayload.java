@@ -41,6 +41,9 @@ public class TrebllePayload {
   @JsonIgnore
   private List<String> perApiMaskKeywords;
 
+  @JsonIgnore
+  private boolean disableResponseBody;
+
   private Data data;
 
   public String getApiKey() {
@@ -139,5 +142,13 @@ public class TrebllePayload {
 
   public void setPerApiMaskKeywords(List<String> perApiMaskKeywords) {
     this.perApiMaskKeywords = perApiMaskKeywords;
+  }
+
+  public boolean isDisableResponseBody() {
+    return disableResponseBody;
+  }
+
+  public void setDisableResponseBody(boolean disableResponseBody) {
+    this.disableResponseBody = disableResponseBody;
   }
 }

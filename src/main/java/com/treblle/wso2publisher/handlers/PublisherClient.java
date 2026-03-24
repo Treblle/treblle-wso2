@@ -248,6 +248,12 @@ public class PublisherClient {
             response.put("body", new org.json.JSONObject());
         }
 
+        // If response body capture is disabled, replace body with empty object and size with 0
+        if (trebllePayload.isDisableResponseBody()) {
+            response.put("body", new org.json.JSONObject());
+            response.put("size", 0);
+        }
+
         data.put("response", response);
         data.put("server", new org.json.JSONObject(trebllePayload.getData().getServer()));
         data.put("errors", new org.json.JSONArray(trebllePayload.getData().getErrors()));

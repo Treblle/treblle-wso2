@@ -215,6 +215,21 @@ In addition to global masking, you can define masking keywords on a per-API basi
 
 The per-API keywords are merged with (not replacing) the global defaults. They are cached by API UUID for performance and are never included in the JSON payload sent to Treblle.
 
+### Disabling Response Body Capture Per API
+
+You can prevent the response body from being sent to Treblle on a per-API basis. This is useful for large responses, PII concerns, or compliance requirements.
+
+**How to configure:**
+
+1. Open the WSO2 Publisher portal
+2. Navigate to your API and go to **Properties**
+3. Add a custom property:
+   - **Name:** `treblle_disable_response_body`
+   - **Value:** `true`
+4. Save and re-deploy the API
+
+When enabled, the response body is replaced with an empty JSON object (`{}`) and the response size is set to `0` before sending to Treblle. The response body field is always present in the payload (never omitted). This setting is cached by API UUID for performance.
+
 ### Custom Endpoint Configuration
 
 **Load Balancing (Default):**

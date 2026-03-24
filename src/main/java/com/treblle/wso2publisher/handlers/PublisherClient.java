@@ -264,10 +264,8 @@ public class PublisherClient {
             }
         }
 
-        requestBody.put("data", data);
-
         // Always include metadata object (fields will be null if not populated)
-        com.treblle.wso2publisher.dto.Metadata metadata = trebllePayload.getMetadata();
+        com.treblle.wso2publisher.dto.Metadata metadata = trebllePayload.getData().getMetadata();
         if (metadata == null) {
             metadata = new com.treblle.wso2publisher.dto.Metadata();
         }
@@ -278,7 +276,9 @@ public class PublisherClient {
         metadataJson.put("customer_ip", metadata.getCustomerIp() != null ? metadata.getCustomerIp() : org.json.JSONObject.NULL);
         metadataJson.put("tenant", metadata.getTenant() != null ? metadata.getTenant() : org.json.JSONObject.NULL);
         metadataJson.put("host", metadata.getHost() != null ? metadata.getHost() : org.json.JSONObject.NULL);
-        requestBody.put("metadata", metadataJson);
+        data.put("metadata", metadataJson);
+
+        requestBody.put("data", data);
 
         return requestBody;
     }

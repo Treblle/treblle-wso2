@@ -459,7 +459,7 @@ public class APILogHandler extends AbstractHandler {
 
         }
 
-        payload.setMetadata(metadata);
+        payload.getData().setMetadata(metadata);
 
         return payload;
     }

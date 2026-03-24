@@ -9,6 +9,7 @@ public class Data {
   private Language language;
   private Request request;
   private Response response;
+  private Metadata metadata;
   private List<RuntimeError> errors = new ArrayList<>();
 
   public Server getServer() {
@@ -41,6 +42,14 @@ public class Data {
 
   public void setResponse(Response response) {
     this.response = response;
+  }
+
+  public Metadata getMetadata() {
+    return metadata;
+  }
+
+  public void setMetadata(Metadata metadata) {
+    this.metadata = metadata;
   }
 
   public List<RuntimeError> getErrors() {

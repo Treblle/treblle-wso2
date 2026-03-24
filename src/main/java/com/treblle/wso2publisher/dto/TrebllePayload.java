@@ -5,7 +5,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
-import com.treblle.wso2publisher.dto.Metadata;
 
 public class TrebllePayload {
 
@@ -41,8 +40,6 @@ public class TrebllePayload {
 
   @JsonIgnore
   private List<String> perApiMaskKeywords;
-
-  private Metadata metadata;
 
   private Data data;
 
@@ -142,13 +139,5 @@ public class TrebllePayload {
 
   public void setPerApiMaskKeywords(List<String> perApiMaskKeywords) {
     this.perApiMaskKeywords = perApiMaskKeywords;
-  }
-
-  public Metadata getMetadata() {
-    return metadata;
-  }
-
-  public void setMetadata(Metadata metadata) {
-    this.metadata = metadata;
   }
 }

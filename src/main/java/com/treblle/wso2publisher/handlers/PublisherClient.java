@@ -277,7 +277,7 @@ public class PublisherClient {
         }
         org.json.JSONObject metadataJson = new org.json.JSONObject();
         metadataJson.put("api_version", metadata.getApiVersion() != null ? metadata.getApiVersion() : org.json.JSONObject.NULL);
-        metadataJson.put("customer", metadata.getCustomer() != null ? metadata.getCustomer() : org.json.JSONObject.NULL);
+        metadataJson.put("user-id", metadata.getUserId() != null ? metadata.getUserId() : org.json.JSONObject.NULL);
         metadataJson.put("publisher", metadata.getPublisher() != null ? metadata.getPublisher() : org.json.JSONObject.NULL);
         metadataJson.put("customer_ip", metadata.getCustomerIp() != null ? metadata.getCustomerIp() : org.json.JSONObject.NULL);
         metadataJson.put("tenant", metadata.getTenant() != null ? metadata.getTenant() : org.json.JSONObject.NULL);

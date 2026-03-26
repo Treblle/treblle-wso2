@@ -7,7 +7,8 @@ public class Metadata {
   @JsonProperty("api_version")
   private String apiVersion;
 
-  private String customer;
+  @JsonProperty("user-id")
+  private String userId;
 
   private String publisher;
 
@@ -26,12 +27,12 @@ public class Metadata {
     this.apiVersion = apiVersion;
   }
 
-  public String getCustomer() {
-    return customer;
+  public String getUserId() {
+    return userId;
   }
 
-  public void setCustomer(String customer) {
-    this.customer = customer;
+  public void setUserId(String userId) {
+    this.userId = userId;
   }
 
   public String getPublisher() {

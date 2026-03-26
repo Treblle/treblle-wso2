@@ -466,12 +466,11 @@ public class APILogHandler extends AbstractHandler {
         String subscriberName = nullIfEmpty(messageContext.getProperty(TREBLLE_SUBSCRIBER));
         String metaAppName = nullIfEmpty(messageContext.getProperty(TREBLLE_META_APP_NAME));
         if (subscriberName != null && metaAppName != null) {
-            metadata.setCustomer( metaAppName+ "-" + subscriberName);
+            metadata.setUserId(metaAppName + "-" + subscriberName);
         } else if (subscriberName != null) {
-            metadata.setCustomer(subscriberName);
+            metadata.setUserId(subscriberName);
         } else if (metaAppName != null) {
-            metadata.setCustomer(metaAppName);
-
+            metadata.setUserId(metaAppName);
         }
 
         payload.getData().setMetadata(metadata);

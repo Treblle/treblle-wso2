@@ -829,12 +829,23 @@ public class APILogHandler extends AbstractHandler {
 
         String maskKeywordsValue = null;
 
-        // Try direct custom property first
-        Object directProp = messageContext.getProperty("treblle_mask_keywords");
-        if (directProp instanceof String && !((String) directProp).isEmpty()) {
-            maskKeywordsValue = (String) directProp;
+        // Try api.ut.treblle_mask_keywords (WSO2 injects API custom properties as flat api.ut.* properties)
+        Object utDirectProp = messageContext.getProperty("api.ut.treblle_mask_keywords");
+        if (utDirectProp instanceof String && !((String) utDirectProp).isEmpty()) {
+            maskKeywordsValue = (String) utDirectProp;
             if (log.isDebugEnabled()) {
-                log.debug("Treblle: Found per-API mask keywords from 'treblle_mask_keywords': " + maskKeywordsValue);
+                log.debug("Treblle: Found per-API mask keywords from 'api.ut.treblle_mask_keywords': " + maskKeywordsValue);
+            }
+        }
+
+        // Try direct property (fallback)
+        if (maskKeywordsValue == null) {
+            Object directProp = messageContext.getProperty("treblle_mask_keywords");
+            if (directProp instanceof String && !((String) directProp).isEmpty()) {
+                maskKeywordsValue = (String) directProp;
+                if (log.isDebugEnabled()) {
+                    log.debug("Treblle: Found per-API mask keywords from 'treblle_mask_keywords': " + maskKeywordsValue);
+                }
             }
         }
 
@@ -911,12 +922,23 @@ public class APILogHandler extends AbstractHandler {
 
         String flagValue = null;
 
-        // Try direct custom property first
-        Object directProp = messageContext.getProperty("treblle_disable_response_body");
-        if (directProp instanceof String && !((String) directProp).isEmpty()) {
-            flagValue = (String) directProp;
+        // Try api.ut.treblle_disable_response_body (WSO2 injects API custom properties as flat api.ut.* properties)
+        Object utDirectProp = messageContext.getProperty("api.ut.treblle_disable_response_body");
+        if (utDirectProp instanceof String && !((String) utDirectProp).isEmpty()) {
+            flagValue = (String) utDirectProp;
             if (log.isDebugEnabled()) {
-                log.debug("Treblle: Found disable response body from 'treblle_disable_response_body': " + flagValue);
+                log.debug("Treblle: Found disable response body from 'api.ut.treblle_disable_response_body': " + flagValue);
+            }
+        }
+
+        // Try direct property (fallback)
+        if (flagValue == null) {
+            Object directProp = messageContext.getProperty("treblle_disable_response_body");
+            if (directProp instanceof String && !((String) directProp).isEmpty()) {
+                flagValue = (String) directProp;
+                if (log.isDebugEnabled()) {
+                    log.debug("Treblle: Found disable response body from 'treblle_disable_response_body': " + flagValue);
+                }
             }
         }
 

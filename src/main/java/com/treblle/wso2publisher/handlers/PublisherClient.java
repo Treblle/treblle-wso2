@@ -305,7 +305,20 @@ public class PublisherClient {
                 Object value = jsonObject.get(key.toString());
                 if (value instanceof org.json.JSONObject) {
                     maskKeywordInJson((org.json.JSONObject) value, keyword);
+                } else if (value instanceof org.json.JSONArray) {
+                    maskKeywordInJsonArray((org.json.JSONArray) value, keyword);
                 }
+            }
+        }
+    }
+
+    private void maskKeywordInJsonArray(org.json.JSONArray jsonArray, String keyword) {
+        for (int i = 0; i < jsonArray.length(); i++) {
+            Object element = jsonArray.get(i);
+            if (element instanceof org.json.JSONObject) {
+                maskKeywordInJson((org.json.JSONObject) element, keyword);
+            } else if (element instanceof org.json.JSONArray) {
+                maskKeywordInJsonArray((org.json.JSONArray) element, keyword);
             }
         }
     }

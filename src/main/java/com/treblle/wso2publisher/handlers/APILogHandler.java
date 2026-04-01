@@ -806,6 +806,43 @@ public class APILogHandler extends AbstractHandler {
     }
 
     /**
+     * Look up an API additional property from the WSO2 API Manager registry.
+     * This is used as a last resort when the property is not found in the MessageContext.
+     * The result is NOT cached here — callers are responsible for caching.
+     *
+     * @param messageContext the Synapse message context (used to get publisher and tenant)
+     * @param apiUuid the API UUID
+     * @param propertyName the additional property name as set in the Publisher portal
+     * @return the property value, or null if not found or on error
+     */
+    private String getAdditionalPropertyFromRegistry(MessageContext messageContext, String apiUuid, String propertyName) {
+        try {
+            String publisher = (String) messageContext.getProperty("api.ut.apiPublisher");
+            String tenantDomain = (String) messageContext.getProperty("tenant.info.domain");
+            if (publisher == null) publisher = "admin";
+            if (tenantDomain == null) tenantDomain = "carbon.super";
+
+            org.wso2.carbon.apimgt.api.APIProvider apiProvider =
+                    org.wso2.carbon.apimgt.impl.APIManagerFactory.getInstance().getAPIProvider(publisher);
+            org.wso2.carbon.apimgt.api.model.API api = apiProvider.getAPIbyUUID(apiUuid, tenantDomain);
+            if (api != null) {
+                org.json.simple.JSONObject additionalProps = api.getAdditionalProperties();
+                if (additionalProps != null) {
+                    Object value = additionalProps.get(propertyName);
+                    if (value instanceof String && !((String) value).isEmpty()) {
+                        return (String) value;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle: Failed to get API additional property '" + propertyName + "' from registry for API " + apiUuid + ": " + e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    /**
      * Get per-API mask keywords from WSO2 custom properties.
      * Uses a cache keyed by API UUID to avoid re-parsing on every request.
      * Tries multiple MessageContext property names to find the custom property.
@@ -874,6 +911,31 @@ public class APILogHandler extends AbstractHandler {
                         log.debug("Treblle: Found per-API mask keywords from 'api.ut.additionalProperties': " + maskKeywordsValue);
                     }
                 }
+            }
+        }
+
+        // Try OpenAPI spec extensions - WSO2 stores additional properties as x-<name> extensions
+        if (maskKeywordsValue == null) {
+            Object openApiObj = messageContext.getProperty("OPEN_API_OBJECT");
+            if (openApiObj instanceof io.swagger.v3.oas.models.OpenAPI) {
+                Map<String, Object> extensions = ((io.swagger.v3.oas.models.OpenAPI) openApiObj).getExtensions();
+                if (extensions != null) {
+                    Object value = extensions.get("x-treblle_mask_keywords");
+                    if (value instanceof String && !((String) value).isEmpty()) {
+                        maskKeywordsValue = (String) value;
+                        if (log.isDebugEnabled()) {
+                            log.debug("Treblle: Found per-API mask keywords from OpenAPI extension 'x-treblle_mask_keywords': " + maskKeywordsValue);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Try WSO2 API Manager registry (additional properties set in Publisher portal)
+        if (maskKeywordsValue == null && apiUuid != null) {
+            maskKeywordsValue = getAdditionalPropertyFromRegistry(messageContext, apiUuid, "treblle_mask_keywords");
+            if (maskKeywordsValue != null && log.isDebugEnabled()) {
+                log.debug("Treblle: Found per-API mask keywords from API registry: " + maskKeywordsValue);
             }
         }
 
@@ -967,6 +1029,31 @@ public class APILogHandler extends AbstractHandler {
                         log.debug("Treblle: Found disable response body from 'api.ut.additionalProperties': " + flagValue);
                     }
                 }
+            }
+        }
+
+        // Try OpenAPI spec extensions - WSO2 stores additional properties as x-<name> extensions
+        if (flagValue == null) {
+            Object openApiObj = messageContext.getProperty("OPEN_API_OBJECT");
+            if (openApiObj instanceof io.swagger.v3.oas.models.OpenAPI) {
+                Map<String, Object> extensions = ((io.swagger.v3.oas.models.OpenAPI) openApiObj).getExtensions();
+                if (extensions != null) {
+                    Object value = extensions.get("x-treblle_disable_response_body");
+                    if (value instanceof String && !((String) value).isEmpty()) {
+                        flagValue = (String) value;
+                        if (log.isDebugEnabled()) {
+                            log.debug("Treblle: Found disable response body from OpenAPI extension 'x-treblle_disable_response_body': " + flagValue);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Try WSO2 API Manager registry (additional properties set in Publisher portal)
+        if (flagValue == null && apiUuid != null) {
+            flagValue = getAdditionalPropertyFromRegistry(messageContext, apiUuid, "treblle_disable_response_body");
+            if (flagValue != null && log.isDebugEnabled()) {
+                log.debug("Treblle: Found disable response body from API registry: " + flagValue);
             }
         }
 

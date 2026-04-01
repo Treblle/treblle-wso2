@@ -914,23 +914,6 @@ public class APILogHandler extends AbstractHandler {
             }
         }
 
-        // Try OpenAPI spec extensions - WSO2 stores additional properties as x-<name> extensions
-        if (maskKeywordsValue == null) {
-            Object openApiObj = messageContext.getProperty("OPEN_API_OBJECT");
-            if (openApiObj instanceof io.swagger.v3.oas.models.OpenAPI) {
-                Map<String, Object> extensions = ((io.swagger.v3.oas.models.OpenAPI) openApiObj).getExtensions();
-                if (extensions != null) {
-                    Object value = extensions.get("x-treblle_mask_keywords");
-                    if (value instanceof String && !((String) value).isEmpty()) {
-                        maskKeywordsValue = (String) value;
-                        if (log.isDebugEnabled()) {
-                            log.debug("Treblle: Found per-API mask keywords from OpenAPI extension 'x-treblle_mask_keywords': " + maskKeywordsValue);
-                        }
-                    }
-                }
-            }
-        }
-
         // Try WSO2 API Manager registry (additional properties set in Publisher portal)
         if (maskKeywordsValue == null && apiUuid != null) {
             maskKeywordsValue = getAdditionalPropertyFromRegistry(messageContext, apiUuid, "treblle_mask_keywords");
@@ -1027,23 +1010,6 @@ public class APILogHandler extends AbstractHandler {
                     flagValue = (String) value;
                     if (log.isDebugEnabled()) {
                         log.debug("Treblle: Found disable response body from 'api.ut.additionalProperties': " + flagValue);
-                    }
-                }
-            }
-        }
-
-        // Try OpenAPI spec extensions - WSO2 stores additional properties as x-<name> extensions
-        if (flagValue == null) {
-            Object openApiObj = messageContext.getProperty("OPEN_API_OBJECT");
-            if (openApiObj instanceof io.swagger.v3.oas.models.OpenAPI) {
-                Map<String, Object> extensions = ((io.swagger.v3.oas.models.OpenAPI) openApiObj).getExtensions();
-                if (extensions != null) {
-                    Object value = extensions.get("x-treblle_disable_response_body");
-                    if (value instanceof String && !((String) value).isEmpty()) {
-                        flagValue = (String) value;
-                        if (log.isDebugEnabled()) {
-                            log.debug("Treblle: Found disable response body from OpenAPI extension 'x-treblle_disable_response_body': " + flagValue);
-                        }
                     }
                 }
             }

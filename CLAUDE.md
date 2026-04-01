@@ -111,7 +111,6 @@ Set the custom property `treblle_mask_keywords` on an API in the WSO2 Publisher 
 1. `handleRequest()` reads the `treblle_mask_keywords` property via `getPerApiMaskKeywords()`, which tries multiple sources in order:
    - Flat MessageContext properties: `api.ut.treblle_mask_keywords`, `treblle_mask_keywords`
    - MessageContext maps: `additionalProperties`, `api.ut.additionalProperties`
-   - OpenAPI spec extensions: `x-treblle_mask_keywords` from `OPEN_API_OBJECT`
    - **WSO2 API Manager registry** (last resort): fetches the full API object via `APIManagerFactory → APIProvider.getAPIbyUUID()` and reads `api.getAdditionalProperties().get("treblle_mask_keywords")`. This is the path that works for custom properties set in the Publisher portal.
 2. Parsed keywords are cached by API UUID in an LRU cache (max 1000 entries) for performance — the registry lookup only happens once per API
 3. Keywords travel on the `TrebllePayload` via a `@JsonIgnore` transient field (never serialized to JSON)

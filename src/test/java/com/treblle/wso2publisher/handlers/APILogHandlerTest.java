@@ -1,5 +1,7 @@
 package com.treblle.wso2publisher.handlers;
 
+import com.google.common.cache.Cache;
+
 import org.apache.axis2.context.ConfigurationContext;
 import org.apache.axis2.engine.AxisConfiguration;
 import org.apache.synapse.MessageContext;
@@ -20,7 +22,6 @@ import java.util.Map;
 
 import static junit.framework.Assert.assertNotNull;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class APILogHandlerTest {
@@ -309,10 +310,10 @@ public class APILogHandlerTest {
 
         System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super");
 
-        // Clear the cache before test
+        // Clear the cache before test using Guava's invalidateAll()
         Field cacheField = APILogHandler.class.getDeclaredField("apiMaskKeywordsCache");
         cacheField.setAccessible(true);
-        ((Map<?, ?>) cacheField.get(null)).clear();
+        ((Cache<?, ?>) cacheField.get(null)).invalidateAll();
 
         APILogHandler apiLogHandler = new APILogHandler();
         boolean result = apiLogHandler.handleRequest(synCtx);
@@ -331,12 +332,12 @@ public class APILogHandlerTest {
     @Test
     public void testPerApiMaskKeywordsCaching() throws Exception {
 
-        // Clear the cache before test
+        // Clear the cache before test using Guava Cache cast
         Field cacheField = APILogHandler.class.getDeclaredField("apiMaskKeywordsCache");
         cacheField.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<String, List<String>> cache = (Map<String, List<String>>) cacheField.get(null);
-        cache.clear();
+        Cache<String, List<String>> cache = (Cache<String, List<String>>) cacheField.get(null);
+        cache.invalidateAll();
 
         SynapseConfiguration synCfg = new SynapseConfiguration();
         AxisConfiguration axisConfig = new AxisConfiguration();
@@ -361,9 +362,9 @@ public class APILogHandlerTest {
         APILogHandler apiLogHandler = new APILogHandler();
         apiLogHandler.handleRequest(synCtx1);
 
-        // Verify cache was populated
-        Assert.assertTrue(cache.containsKey("cache-test-uuid"));
-        Assert.assertEquals(2, cache.get("cache-test-uuid").size());
+        // Verify cache was populated using Guava methods
+        Assert.assertNotNull(cache.getIfPresent("cache-test-uuid"));
+        Assert.assertEquals(2, cache.getIfPresent("cache-test-uuid").size());
 
         // Second request: same API UUID but WITHOUT the property — should use cache
         org.apache.axis2.context.MessageContext axisMsgCtx2 = new org.apache.axis2.context.MessageContext();

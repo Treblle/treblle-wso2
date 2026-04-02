@@ -1,5 +1,9 @@
 package com.treblle.wso2publisher.handlers;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import java.util.concurrent.TimeUnit;
+
 import java.net.InetAddress;
 import java.net.URLDecoder;
 import java.net.UnknownHostException;
@@ -67,15 +71,14 @@ public class APILogHandler extends AbstractHandler {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MASK_KEYWORDS_CACHE_MAX_SIZE = 1000;
-    private static final Map<String, List<String>> apiMaskKeywordsCache = java.util.Collections.synchronizedMap(
-        new java.util.LinkedHashMap<String, List<String>>(MASK_KEYWORDS_CACHE_MAX_SIZE, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(java.util.Map.Entry<String, List<String>> eldest) {
-                return size() > MASK_KEYWORDS_CACHE_MAX_SIZE;
-            }
-        }
-    );
-    private static final Map<String, Boolean> apiDisableResponseBodyCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Cache<String, List<String>> apiMaskKeywordsCache = CacheBuilder.newBuilder()
+        .maximumSize(1000)
+        .expireAfterWrite(60, TimeUnit.MINUTES)
+        .build();
+    private static final Cache<String, Boolean> apiDisableResponseBodyCache = CacheBuilder.newBuilder()
+        .maximumSize(1000)
+        .expireAfterWrite(60, TimeUnit.MINUTES)
+        .build();
     private static String serverIP;
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
@@ -855,13 +858,17 @@ public class APILogHandler extends AbstractHandler {
     private List<String> getPerApiMaskKeywords(MessageContext messageContext, String apiUuid) {
         // Check cache first if we have an API UUID
         if (apiUuid != null) {
-            List<String> cached = apiMaskKeywordsCache.get(apiUuid);
+            List<String> cached = apiMaskKeywordsCache.getIfPresent(apiUuid);
             if (cached != null) {
                 if (log.isDebugEnabled()) {
                     log.debug("Treblle: Per-API mask keywords cache hit for API " + apiUuid);
                 }
                 return cached;
             }
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("Treblle: Per-API mask keywords cache miss for API " + apiUuid);
         }
 
         String maskKeywordsValue = null;
@@ -956,13 +963,17 @@ public class APILogHandler extends AbstractHandler {
     private boolean getDisableResponseBody(MessageContext messageContext, String apiUuid) {
         // Check cache first if we have an API UUID
         if (apiUuid != null) {
-            Boolean cached = apiDisableResponseBodyCache.get(apiUuid);
+            Boolean cached = apiDisableResponseBodyCache.getIfPresent(apiUuid);
             if (cached != null) {
                 if (log.isDebugEnabled()) {
                     log.debug("Treblle: Disable response body cache hit for API " + apiUuid + ": " + cached);
                 }
                 return cached;
             }
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("Treblle: Disable response body cache miss for API " + apiUuid);
         }
 
         String flagValue = null;

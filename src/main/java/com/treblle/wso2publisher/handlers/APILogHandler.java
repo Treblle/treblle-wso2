@@ -83,6 +83,15 @@ public class APILogHandler extends AbstractHandler {
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
 
+    /**
+     * No-op setter required by Synapse's PropertyHelper when WSO2 injects handler
+     * properties from the generated API configuration XML. Without this method,
+     * Synapse logs an error during API initialization and fails to load the handler.
+     */
+    public void setAdditionalProperties(String additionalProperties) {
+        // Intentionally empty — per-API properties are read from MessageContext at runtime
+    }
+
     @Override
     public boolean handleRequest(MessageContext messageContext) {
         try {

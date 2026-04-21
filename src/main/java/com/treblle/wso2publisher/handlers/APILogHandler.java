@@ -834,19 +834,28 @@ public class APILogHandler extends AbstractHandler {
             if (publisher == null) publisher = "admin";
             if (tenantDomain == null) tenantDomain = "carbon.super";
 
-            org.wso2.carbon.apimgt.api.APIProvider apiProvider =
-                    org.wso2.carbon.apimgt.impl.APIManagerFactory.getInstance().getAPIProvider(publisher);
-            org.wso2.carbon.apimgt.api.model.API api = apiProvider.getAPIbyUUID(apiUuid, tenantDomain);
-            if (api != null) {
-                org.json.simple.JSONObject additionalProps = api.getAdditionalProperties();
-                if (additionalProps != null) {
-                    Object value = additionalProps.get(propertyName);
-                    if (value instanceof String && !((String) value).isEmpty()) {
-                        return (String) value;
+            org.wso2.carbon.context.PrivilegedCarbonContext.startTenantFlow();
+            org.wso2.carbon.context.PrivilegedCarbonContext.getThreadLocalCarbonContext().setTenantDomain(tenantDomain, true);
+            try {
+                org.wso2.carbon.apimgt.api.APIProvider apiProvider =
+                        org.wso2.carbon.apimgt.impl.APIManagerFactory.getInstance().getAPIProvider(publisher);
+                org.wso2.carbon.apimgt.api.model.API api = apiProvider.getAPIbyUUID(apiUuid, tenantDomain);
+                if (api != null) {
+                    org.json.simple.JSONObject additionalProps = api.getAdditionalProperties();
+                    if (additionalProps != null) {
+                        Object value = additionalProps.get(propertyName);
+                        if (value instanceof String && !((String) value).isEmpty()) {
+                            return (String) value;
+                        }
                     }
                 }
+            } finally {
+                org.wso2.carbon.context.PrivilegedCarbonContext.endTenantFlow();
             }
-        } catch (Exception e) {
+        } catch (ExceptionInInitializerError | NoClassDefFoundError e) {
+            log.warn("Treblle: Registry lookup for '" + propertyName + "' is unavailable — publisher persistence layer (e.g. APIMapper) is not on the gateway classpath. " +
+                     "Per-API custom properties via the Publisher portal will not work in this deployment. API UUID: " + apiUuid);
+        } catch (Throwable e) {
             if (log.isDebugEnabled()) {
                 log.debug("Treblle: Failed to get API additional property '" + propertyName + "' from registry for API " + apiUuid + ": " + e.getMessage());
             }
@@ -866,13 +875,14 @@ public class APILogHandler extends AbstractHandler {
     @SuppressWarnings("unchecked")
     private List<String> getPerApiMaskKeywords(MessageContext messageContext, String apiUuid) {
         // Check cache first if we have an API UUID
+        // An empty list is a sentinel meaning "already looked up, no keywords configured"
         if (apiUuid != null) {
             List<String> cached = apiMaskKeywordsCache.getIfPresent(apiUuid);
             if (cached != null) {
                 if (log.isDebugEnabled()) {
                     log.debug("Treblle: Per-API mask keywords cache hit for API " + apiUuid);
                 }
-                return cached;
+                return cached.isEmpty() ? null : cached;
             }
         }
 
@@ -942,6 +952,10 @@ public class APILogHandler extends AbstractHandler {
             if (log.isDebugEnabled()) {
                 log.debug("Treblle: No per-API mask keywords found for API " + (apiUuid != null ? apiUuid : "unknown"));
             }
+            // Cache the negative result to prevent retrying the registry on every request
+            if (apiUuid != null) {
+                apiMaskKeywordsCache.put(apiUuid, Collections.emptyList());
+            }
             return null;
         }
 
@@ -951,9 +965,9 @@ public class APILogHandler extends AbstractHandler {
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
 
-        // Cache by API UUID if available
-        if (apiUuid != null && !keywords.isEmpty()) {
-            apiMaskKeywordsCache.put(apiUuid, keywords);
+        // Cache by API UUID if available (empty list is a sentinel for "no keywords")
+        if (apiUuid != null) {
+            apiMaskKeywordsCache.put(apiUuid, keywords.isEmpty() ? Collections.emptyList() : keywords);
         }
 
         return keywords.isEmpty() ? null : keywords;

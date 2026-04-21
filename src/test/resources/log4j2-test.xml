@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="[%c] %level : %msg%n"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <!-- Suppress Synapse framework noise about missing config files -->
+        <Logger name="org.apache.synapse" level="ERROR" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        <!-- Keep Treblle handler at WARN during tests — expected nulls in sparse test contexts are not errors -->
+        <Logger name="com.treblle.wso2publisher" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        <Root level="WARN">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>

@@ -9,14 +9,19 @@ import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 
+import com.treblle.wso2publisher.commons.PropertyUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.apache.synapse.MessageContext;
+import org.apache.synapse.SynapseException;
 import org.apache.synapse.commons.json.JsonUtil;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
 import org.apache.synapse.rest.AbstractHandler;
 import org.apache.synapse.transport.passthru.util.RelayUtils;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.wso2.carbon.apimgt.gateway.APIMgtGatewayConstants;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -39,6 +44,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class APILogHandler extends AbstractHandler {
+
+    private Properties additionalProperties = new Properties();
 
     private static final String HEADER_X_FORWARDED_FOR = "X-FORWARDED-FOR";
     private static final String TREBLLE_REQ_HEADERS = "TREBLLE_REQ_HEADERS";
@@ -83,14 +90,33 @@ public class APILogHandler extends AbstractHandler {
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
 
-    /**
-     * No-op setter required by Synapse's PropertyHelper when WSO2 injects handler
-     * properties from the generated API configuration XML. Without this method,
-     * Synapse logs an error during API initialization and fails to load the handler.
-     */
-    public void setAdditionalProperties(String additionalProperties) {
-        // Intentionally empty — per-API properties are read from MessageContext at runtime
+
+    protected Properties getAdditionalProperties() {
+        return additionalProperties;
     }
+
+    public void setAdditionalProperties(String additionalPropertiesJsonXMlEscaped) {
+
+        if (log.isDebugEnabled()) {
+            log.debug(String.format(">>> setAdditionalProperties(%s)", additionalPropertiesJsonXMlEscaped));
+        }
+
+        this.additionalProperties.clear();
+
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(additionalPropertiesJsonXMlEscaped)) {
+            String additionalPropertiesJson = StringEscapeUtils.unescapeXml(additionalPropertiesJsonXMlEscaped);
+            try {
+                JSONObject jsonObject = new JSONObject(additionalPropertiesJson);
+                this.additionalProperties.putAll(PropertyUtils.toProperties(jsonObject));
+            } catch (JSONException e) {
+                String msg = String.format("Unable to convert json(%s) to properties - Reason: %s",
+                        additionalPropertiesJson, e.getMessage());
+                log.warn(msg);
+                throw new SynapseException(msg, e);
+            }
+        }
+    }
+
 
     @Override
     public boolean handleRequest(MessageContext messageContext) {
@@ -892,14 +918,14 @@ public class APILogHandler extends AbstractHandler {
 
         String maskKeywordsValue = null;
 
-        // Try api.ut.treblle_mask_keywords (WSO2 injects API custom properties as flat api.ut.* properties)
-        Object utDirectProp = messageContext.getProperty("api.ut.treblle_mask_keywords");
-        if (utDirectProp instanceof String && !((String) utDirectProp).isEmpty()) {
-            maskKeywordsValue = (String) utDirectProp;
-            if (log.isDebugEnabled()) {
-                log.debug("Treblle: Found per-API mask keywords from 'api.ut.treblle_mask_keywords': " + maskKeywordsValue);
-            }
-        }
+//        // Try api.ut.treblle_mask_keywords (WSO2 injects API custom properties as flat api.ut.* properties)
+//        Object utDirectProp = messageContext.getProperty("api.ut.treblle_mask_keywords");
+//        if (utDirectProp instanceof String && !((String) utDirectProp).isEmpty()) {
+//            maskKeywordsValue = (String) utDirectProp;
+//            if (log.isDebugEnabled()) {
+//                log.debug("Treblle: Found per-API mask keywords from 'api.ut.treblle_mask_keywords': " + maskKeywordsValue);
+//            }
+//        }
 
         // Try direct property (fallback)
         if (maskKeywordsValue == null) {
@@ -914,7 +940,7 @@ public class APILogHandler extends AbstractHandler {
 
         // Try additionalProperties map
         if (maskKeywordsValue == null) {
-            Object additionalProps = messageContext.getProperty("additionalProperties");
+            Object additionalProps = getAdditionalProperties();
             if (additionalProps instanceof Map) {
                 Object value = ((Map<String, Object>) additionalProps).get("treblle_mask_keywords");
                 if (value instanceof String && !((String) value).isEmpty()) {
@@ -926,27 +952,27 @@ public class APILogHandler extends AbstractHandler {
             }
         }
 
-        // Try api.ut.additionalProperties map
-        if (maskKeywordsValue == null) {
-            Object utAdditionalProps = messageContext.getProperty("api.ut.additionalProperties");
-            if (utAdditionalProps instanceof Map) {
-                Object value = ((Map<String, Object>) utAdditionalProps).get("treblle_mask_keywords");
-                if (value instanceof String && !((String) value).isEmpty()) {
-                    maskKeywordsValue = (String) value;
-                    if (log.isDebugEnabled()) {
-                        log.debug("Treblle: Found per-API mask keywords from 'api.ut.additionalProperties': " + maskKeywordsValue);
-                    }
-                }
-            }
-        }
+//        // Try api.ut.additionalProperties map
+//        if (maskKeywordsValue == null) {
+//            Object utAdditionalProps = messageContext.getProperty("api.ut.additionalProperties");
+//            if (utAdditionalProps instanceof Map) {
+//                Object value = ((Map<String, Object>) utAdditionalProps).get("treblle_mask_keywords");
+//                if (value instanceof String && !((String) value).isEmpty()) {
+//                    maskKeywordsValue = (String) value;
+//                    if (log.isDebugEnabled()) {
+//                        log.debug("Treblle: Found per-API mask keywords from 'api.ut.additionalProperties': " + maskKeywordsValue);
+//                    }
+//                }
+//            }
+//        }
 
-        // Try WSO2 API Manager registry (additional properties set in Publisher portal)
-        if (maskKeywordsValue == null && apiUuid != null) {
-            maskKeywordsValue = getAdditionalPropertyFromRegistry(messageContext, apiUuid, "treblle_mask_keywords");
-            if (maskKeywordsValue != null && log.isDebugEnabled()) {
-                log.debug("Treblle: Found per-API mask keywords from API registry: " + maskKeywordsValue);
-            }
-        }
+//        // Try WSO2 API Manager registry (additional properties set in Publisher portal)
+//        if (maskKeywordsValue == null && apiUuid != null) {
+//            maskKeywordsValue = getAdditionalPropertyFromRegistry(messageContext, apiUuid, "treblle_mask_keywords");
+//            if (maskKeywordsValue != null && log.isDebugEnabled()) {
+//                log.debug("Treblle: Found per-API mask keywords from API registry: " + maskKeywordsValue);
+//            }
+//        }
 
         if (maskKeywordsValue == null) {
             if (log.isDebugEnabled()) {

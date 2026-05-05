@@ -75,7 +75,15 @@ public class APILogHandler extends AbstractHandler {
             }
         }
     );
-    private static final Map<String, Boolean> apiDisableResponseBodyCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int DISABLE_BODY_CACHE_MAX_SIZE = 1000;
+    private static final Map<String, Boolean> apiDisableResponseBodyCache = java.util.Collections.synchronizedMap(
+        new java.util.LinkedHashMap<String, Boolean>(DISABLE_BODY_CACHE_MAX_SIZE, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(java.util.Map.Entry<String, Boolean> eldest) {
+                return size() > DISABLE_BODY_CACHE_MAX_SIZE;
+            }
+        }
+    );
     private static String serverIP;
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
@@ -407,8 +415,7 @@ public class APILogHandler extends AbstractHandler {
 
         if (jsonNode != null) {
             String jsonString = jsonNode.toString();
-            byte[] responseBody = jsonString.getBytes();
-            response.setSize((long) responseBody.length);
+            response.setSize((long) jsonString.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
         } else {
             response.setSize(0L);
         }

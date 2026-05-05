@@ -20,7 +20,7 @@ public class DataHolder {
     private CloseableHttpClient httpClient;
     private PoolingHttpClientConnectionManager connectionManager;
     public static final int DEFAULT_QUEUE_SIZE = 20000;
-    public static final int DEFAULT_WORKER_THREADS = 1;
+    public static final int DEFAULT_WORKER_THREADS = 4;
     public String gatewayURL;
     Map<String, String> enabledTenantDomains = new HashMap<>();
     private static final String TENANT_DOMAINS = "TREBLLE_ENABLED_TENANT_DOMAINS";
@@ -80,7 +80,7 @@ public class DataHolder {
         connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(100);
         connectionManager.setDefaultMaxPerRoute(20);
-        connectionManager.setValidateAfterInactivity(2000);
+        connectionManager.setValidateAfterInactivity(30000);
 
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(5000)

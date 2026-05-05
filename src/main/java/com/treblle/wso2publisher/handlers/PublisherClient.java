@@ -51,6 +51,9 @@ public class PublisherClient {
     // API Key for the Treblle project
     private String apiKey;
 
+    // Custom gateway URL, cached at construction time (null means use round-robin defaults)
+    private final String customGatewayUrl;
+
     /**
      * Constructor to initialize the PublisherClient with SDK token, API key, and HTTP client.
      *
@@ -76,6 +79,10 @@ public class PublisherClient {
         }
         this.maskKeywordsList = java.util.Collections.unmodifiableList(keywords);
 
+        String envGatewayUrl = System.getenv("TREBLLE_GATEWAY_URL");
+        this.customGatewayUrl = (envGatewayUrl != null && !envGatewayUrl.trim().isEmpty())
+                ? envGatewayUrl.trim() : null;
+
         log.debug("Masking keywords: " + maskKeywordsList);
     }
 
@@ -96,11 +103,7 @@ public class PublisherClient {
         payload.setSdkToken(sdkToken);
         payload.setApiKey(apiKey);
 
-        // Check if custom gateway URL is configured, otherwise use round-robin default URL
-        String gatewayUrl = System.getenv("TREBLLE_GATEWAY_URL");
-        if (gatewayUrl == null || gatewayUrl.trim().isEmpty()) {
-            gatewayUrl = getNextBaseUrl();
-        }
+        String gatewayUrl = (customGatewayUrl != null) ? customGatewayUrl : getNextBaseUrl();
 
         int statusCode = 0;
         String reasonPhrase = "";
@@ -171,7 +174,9 @@ public class PublisherClient {
 
         try {
             org.json.JSONObject requestBody = buildRequestBodyForTrebllePayload(payload);
-            log.info("Treblle Payload - " + requestBody);
+            if (log.isDebugEnabled()) {
+                log.debug("Treblle Payload - " + requestBody);
+            }
 
             // Create entity and wrap with gzip compression
             StringEntity uncompressed = new StringEntity(requestBody.toString());

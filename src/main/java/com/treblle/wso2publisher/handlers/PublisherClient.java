@@ -11,6 +11,7 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.treblle.wso2publisher.dto.TrebllePayload;
 
 import java.io.IOException;
@@ -38,6 +39,8 @@ public class PublisherClient {
 
     // Round-robin endpoint index for load balancing
     private static final AtomicInteger endpointIndex = new AtomicInteger(0);
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // Array of keywords to be masked in the payload
     private static final String[] MASK_KEYWORDS = {
@@ -330,9 +333,9 @@ public class PublisherClient {
 
         try {
             if (node.isObject()) {
-                return new org.json.JSONObject(node.toString());
+                return new org.json.JSONObject(OBJECT_MAPPER.convertValue(node, java.util.Map.class));
             } else if (node.isArray()) {
-                return new org.json.JSONArray(node.toString());
+                return new org.json.JSONArray(OBJECT_MAPPER.convertValue(node, java.util.List.class));
             } else if (node.isBoolean()) {
                 return node.asBoolean();
             } else if (node.isNumber()) {
@@ -340,8 +343,7 @@ public class PublisherClient {
             } else if (node.isTextual()) {
                 return node.asText();
             } else {
-                // Fallback: try to parse as generic JSON
-                return new org.json.JSONObject(node.toString());
+                return new org.json.JSONObject(OBJECT_MAPPER.convertValue(node, java.util.Map.class));
             }
         } catch (Exception e) {
             log.warn("Failed to convert JsonNode to org.json type: " + e.getMessage() + ". Using empty object as fallback.");

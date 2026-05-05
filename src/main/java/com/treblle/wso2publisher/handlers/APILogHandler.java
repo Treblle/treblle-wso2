@@ -111,7 +111,7 @@ public class APILogHandler extends AbstractHandler {
             messageContext.setProperty(TREBLLE_REQ_HEADERS, headersMap);
 
             // Retrieve and set the request body
-            JsonNode jsonNode = getMessageBody(messageContext);
+            JsonNode jsonNode = getMessageBody(messageContext, headersMap);
             messageContext.setProperty(TREBLLE_REQ_BODY, jsonNode);
 
             // Retrieve and set the request path
@@ -403,7 +403,8 @@ public class APILogHandler extends AbstractHandler {
 
         // Set response properties
         response.setCode(responseCode);
-        JsonNode jsonNode = getMessageBody(messageContext);
+        Map<String, String> responseHeaderMap = getHeaders(messageContext);
+        JsonNode jsonNode = getMessageBody(messageContext, responseHeaderMap);
         response.setBody(jsonNode);
 
         if (jsonNode != null) {
@@ -413,7 +414,6 @@ public class APILogHandler extends AbstractHandler {
             response.setSize(0L);
         }
 
-        Map<String, String> responseHeaderMap = getHeaders(messageContext);
         response.setHeaders(responseHeaderMap);
         response.setLoadTime((double) getResponseTime(messageContext));
 
@@ -526,7 +526,7 @@ public class APILogHandler extends AbstractHandler {
         return headersMap;
     }
 
-    private JsonNode getMessageBody(MessageContext messageContext) {
+    private JsonNode getMessageBody(MessageContext messageContext, Map<String, String> headers) {
 
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
@@ -540,7 +540,6 @@ public class APILogHandler extends AbstractHandler {
 
         // Determine content type case-insensitively
         String contentType = null;
-        Map<String, String> headers = getHeaders(messageContext);
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             if ("content-type".equalsIgnoreCase(entry.getKey())) {
                 contentType = entry.getValue().toLowerCase();

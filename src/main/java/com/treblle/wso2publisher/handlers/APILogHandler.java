@@ -67,14 +67,7 @@ public class APILogHandler extends AbstractHandler {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MASK_KEYWORDS_CACHE_MAX_SIZE = 1000;
-    private static final Map<String, List<String>> apiMaskKeywordsCache = java.util.Collections.synchronizedMap(
-        new java.util.LinkedHashMap<String, List<String>>(MASK_KEYWORDS_CACHE_MAX_SIZE, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(java.util.Map.Entry<String, List<String>> eldest) {
-                return size() > MASK_KEYWORDS_CACHE_MAX_SIZE;
-            }
-        }
-    );
+    private static final Map<String, List<String>> apiMaskKeywordsCache = new java.util.concurrent.ConcurrentHashMap<>();
     private static final int DISABLE_BODY_CACHE_MAX_SIZE = 1000;
     private static final Map<String, Boolean> apiDisableResponseBodyCache = java.util.Collections.synchronizedMap(
         new java.util.LinkedHashMap<String, Boolean>(DISABLE_BODY_CACHE_MAX_SIZE, 0.75f, true) {
@@ -886,8 +879,9 @@ public class APILogHandler extends AbstractHandler {
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
 
-        // Cache by API UUID if available
-        if (apiUuid != null && !keywords.isEmpty()) {
+        // Cache by API UUID if available (size-bounded to avoid unbounded growth)
+        if (apiUuid != null && !keywords.isEmpty()
+                && apiMaskKeywordsCache.size() < MASK_KEYWORDS_CACHE_MAX_SIZE) {
             apiMaskKeywordsCache.put(apiUuid, keywords);
         }
 

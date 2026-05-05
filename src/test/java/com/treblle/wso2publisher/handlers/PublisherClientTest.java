@@ -72,11 +72,11 @@ public class PublisherClientTest {
         PublisherClient publisherClient = new PublisherClient("abc123", "def456",
                 DataHolder.getInstance().getHttpClient());
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"password\":\"123456\"}");
-        String keyword = "password";
+        Set<String> keywords = new HashSet<>(Arrays.asList("password"));
 
-        Method maskKeywordInJsonMethod = PublisherClient.class.getDeclaredMethod("maskKeywordInJson", org.json.JSONObject.class, String.class);
+        Method maskKeywordInJsonMethod = PublisherClient.class.getDeclaredMethod("maskKeywordInJson", org.json.JSONObject.class, Set.class);
         maskKeywordInJsonMethod.setAccessible(true);
-        maskKeywordInJsonMethod.invoke(publisherClient, jsonObject, keyword);
+        maskKeywordInJsonMethod.invoke(publisherClient, jsonObject, keywords);
         Assert.assertEquals("****", jsonObject.getString("password"));
     }
 
@@ -86,11 +86,11 @@ public class PublisherClientTest {
         PublisherClient publisherClient = new PublisherClient("abc123", "def456",
                 DataHolder.getInstance().getHttpClient());
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"user\":{\"password\":\"123456\"}}");
-        String keyword = "password";
+        Set<String> keywords = new HashSet<>(Arrays.asList("password"));
 
-        Method maskKeywordInJsonMethod = PublisherClient.class.getDeclaredMethod("maskKeywordInJson", org.json.JSONObject.class, String.class);
+        Method maskKeywordInJsonMethod = PublisherClient.class.getDeclaredMethod("maskKeywordInJson", org.json.JSONObject.class, Set.class);
         maskKeywordInJsonMethod.setAccessible(true);
-        maskKeywordInJsonMethod.invoke(publisherClient, jsonObject, keyword);
+        maskKeywordInJsonMethod.invoke(publisherClient, jsonObject, keywords);
         Assert.assertEquals("****", jsonObject.getJSONObject("user").getString("password"));
     }
 
@@ -100,11 +100,11 @@ public class PublisherClientTest {
         PublisherClient publisherClient = new PublisherClient("abc123", "def456",
                 DataHolder.getInstance().getHttpClient());
         org.json.JSONObject jsonObject = new org.json.JSONObject("{\"username\":\"john_doe\"}");
-        String keyword = "password";
+        Set<String> keywords = new HashSet<>(Arrays.asList("password"));
 
-        Method maskKeywordInJsonMethod = PublisherClient.class.getDeclaredMethod("maskKeywordInJson", org.json.JSONObject.class, String.class);
+        Method maskKeywordInJsonMethod = PublisherClient.class.getDeclaredMethod("maskKeywordInJson", org.json.JSONObject.class, Set.class);
         maskKeywordInJsonMethod.setAccessible(true);
-        maskKeywordInJsonMethod.invoke(publisherClient, jsonObject, keyword);
+        maskKeywordInJsonMethod.invoke(publisherClient, jsonObject, keywords);
         Assert.assertEquals("john_doe", jsonObject.getString("username"));
     }
 
@@ -114,11 +114,11 @@ public class PublisherClientTest {
         PublisherClient publisherClient = new PublisherClient("abc123", "def456",
                 DataHolder.getInstance().getHttpClient());
         org.json.JSONObject jsonObject = new org.json.JSONObject("{}");
-        String keyword = "password";
+        Set<String> keywords = new HashSet<>(Arrays.asList("password"));
 
-        Method maskKeywordInJsonMethod = PublisherClient.class.getDeclaredMethod("maskKeywordInJson", org.json.JSONObject.class, String.class);
+        Method maskKeywordInJsonMethod = PublisherClient.class.getDeclaredMethod("maskKeywordInJson", org.json.JSONObject.class, Set.class);
         maskKeywordInJsonMethod.setAccessible(true);
-        maskKeywordInJsonMethod.invoke(publisherClient, jsonObject, keyword);
+        maskKeywordInJsonMethod.invoke(publisherClient, jsonObject, keywords);
         Assert.assertTrue(jsonObject.length() == 0);
     }
 

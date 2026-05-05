@@ -16,7 +16,9 @@ import com.treblle.wso2publisher.dto.TrebllePayload;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -263,17 +265,18 @@ public class PublisherClient {
         data.put("server", new org.json.JSONObject(trebllePayload.getData().getServer()));
         data.put("errors", new org.json.JSONArray(trebllePayload.getData().getErrors()));
 
-        for (String keyword : maskKeywordsList) {
-            maskKeywordInJson(data, keyword);
+        // Build a single lowercase keyword set (global + per-API) for one-pass masking
+        Set<String> keywordsToMask = new HashSet<>();
+        for (String kw : maskKeywordsList) {
+            keywordsToMask.add(kw.toLowerCase());
         }
-
-        // Apply per-API mask keywords if configured
         List<String> perApiKeywords = trebllePayload.getPerApiMaskKeywords();
         if (perApiKeywords != null && !perApiKeywords.isEmpty()) {
-            for (String keyword : perApiKeywords) {
-                maskKeywordInJson(data, keyword);
+            for (String kw : perApiKeywords) {
+                keywordsToMask.add(kw.toLowerCase());
             }
         }
+        maskKeywordInJson(data, keywordsToMask);
 
         // Always include metadata object (fields will be null if not populated)
         com.treblle.wso2publisher.dto.Metadata metadata = trebllePayload.getData().getMetadata();
@@ -300,16 +303,14 @@ public class PublisherClient {
      * @param jsonObject the JSON object to be masked
      * @param keyword    the keyword to be masked
      */
-    private void maskKeywordInJson(org.json.JSONObject jsonObject, String keyword) {
-        String lowerCaseKeyword = keyword.toLowerCase();
+    private void maskKeywordInJson(org.json.JSONObject jsonObject, Set<String> keywords) {
         for (Object key : jsonObject.keySet()) {
-            String lowerCaseKey = key.toString().toLowerCase();
-            if (lowerCaseKey.equals(lowerCaseKeyword)) {
+            if (keywords.contains(key.toString().toLowerCase())) {
                 jsonObject.put(key.toString(), "****");
             } else {
                 Object value = jsonObject.get(key.toString());
                 if (value instanceof org.json.JSONObject) {
-                    maskKeywordInJson((org.json.JSONObject) value, keyword);
+                    maskKeywordInJson((org.json.JSONObject) value, keywords);
                 }
             }
         }

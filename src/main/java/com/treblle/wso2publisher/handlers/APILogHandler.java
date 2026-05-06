@@ -840,6 +840,7 @@ public class APILogHandler extends AbstractHandler {
      * @return list of per-API mask keywords, or null if not configured
      */
     @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private List<String> getPerApiMaskKeywords(MessageContext messageContext, String apiUuid) {
         // Check cache first if we have an API UUID
         // An empty list is a sentinel meaning "already looked up, no keywords configured"
@@ -847,61 +848,139 @@ public class APILogHandler extends AbstractHandler {
             List<String> cached = apiMaskKeywordsCache.getIfPresent(apiUuid);
             if (cached != null) {
                 if (log.isDebugEnabled()) {
-                    log.debug("Treblle: Per-API mask keywords cache hit for API " + apiUuid);
+                    log.debug("[TREBLLE]:Per-API mask keywords cache hit for API " + apiUuid);
                 }
                 return cached.isEmpty() ? null : cached;
             }
         }
 
-        if (log.isDebugEnabled()) {
-            log.debug("Treblle: Per-API mask keywords cache miss for API " + apiUuid);
+        String maskKeywordsValue = null;
+        String foundVia = null;
+
+        // --- Approach 1: direct Synapse MessageContext property ---
+        Object directProp = messageContext.getProperty("treblle_mask_keywords");
+        log.warn("[TREBLLE][MASK-DIAG] Approach 1 - direct MC property 'treblle_mask_keywords': " + directProp + " (type: " + (directProp == null ? "null" : directProp.getClass().getName()) + ")");
+        if (directProp instanceof String && !((String) directProp).isEmpty()) {
+            maskKeywordsValue = (String) directProp;
+            foundVia = "direct MC property 'treblle_mask_keywords'";
         }
 
-        String maskKeywordsValue = null;
-
-        // Try direct property (fallback)
+        // --- Approach 2: handler-level Properties injected via velocity template setter ---
         if (maskKeywordsValue == null) {
-            Object directProp = messageContext.getProperty("treblle_mask_keywords");
-            if (directProp instanceof String && !((String) directProp).isEmpty()) {
-                maskKeywordsValue = (String) directProp;
-                if (log.isDebugEnabled()) {
-                    log.debug("Treblle: Found per-API mask keywords from 'treblle_mask_keywords': " + maskKeywordsValue);
-                }
+            Properties handlerProps = getAdditionalProperties();
+            String handlerPropsValue = handlerProps.getProperty("treblle_mask_keywords");
+            log.warn("[TREBLLE][MASK-DIAG] Approach 2 - handler additionalProperties (size=" + handlerProps.size() + ") 'treblle_mask_keywords': " + handlerPropsValue);
+            log.warn("[TREBLLE][MASK-DIAG] Approach 2 - handler additionalProperties full content: " + handlerProps);
+            if (handlerPropsValue != null && !handlerPropsValue.isEmpty()) {
+                maskKeywordsValue = handlerPropsValue;
+                foundVia = "handler additionalProperties";
             }
         }
 
-        // Try additionalProperties map
+        // --- Approach 3: api.ut.additionalProperties JSON string in MessageContext ---
         if (maskKeywordsValue == null) {
-            Object additionalProps = getAdditionalProperties();
-            if (additionalProps instanceof Map) {
-                Object value = ((Map<String, Object>) additionalProps).get("treblle_mask_keywords");
+            Object apiUtProps = messageContext.getProperty("api.ut.additionalProperties");
+            log.warn("[TREBLLE][MASK-DIAG] Approach 3 - MC property 'api.ut.additionalProperties': " + apiUtProps + " (type: " + (apiUtProps == null ? "null" : apiUtProps.getClass().getName()) + ")");
+            if (apiUtProps instanceof String && !((String) apiUtProps).isEmpty()) {
+                try {
+                    JSONObject jsonObj = new JSONObject((String) apiUtProps);
+                    String value = jsonObj.optString("treblle_mask_keywords", null);
+                    log.warn("[TREBLLE][MASK-DIAG] Approach 3 - parsed JSON 'treblle_mask_keywords': " + value);
+                    if (value != null && !value.isEmpty()) {
+                        maskKeywordsValue = value;
+                        foundVia = "api.ut.additionalProperties JSON";
+                    }
+                } catch (JSONException e) {
+                    log.warn("[TREBLLE][MASK-DIAG] Approach 3 - failed to parse api.ut.additionalProperties JSON: " + e.getMessage());
+                }
+            } else if (apiUtProps instanceof Map) {
+                Object value = ((Map) apiUtProps).get("treblle_mask_keywords");
+                log.warn("[TREBLLE][MASK-DIAG] Approach 3 - Map 'treblle_mask_keywords': " + value);
                 if (value instanceof String && !((String) value).isEmpty()) {
                     maskKeywordsValue = (String) value;
-                    if (log.isDebugEnabled()) {
-                        log.debug("Treblle: Found per-API mask keywords from 'additionalProperties': " + maskKeywordsValue);
+                    foundVia = "api.ut.additionalProperties Map";
+                }
+            }
+        }
+
+        // --- Approach 4: additionalProperties JSON string in MessageContext ---
+        if (maskKeywordsValue == null) {
+            Object mcAdditionalProps = messageContext.getProperty("additionalProperties");
+            log.warn("[TREBLLE][MASK-DIAG] Approach 4 - MC property 'additionalProperties': " + mcAdditionalProps + " (type: " + (mcAdditionalProps == null ? "null" : mcAdditionalProps.getClass().getName()) + ")");
+            if (mcAdditionalProps instanceof String && !((String) mcAdditionalProps).isEmpty()) {
+                try {
+                    JSONObject jsonObj = new JSONObject((String) mcAdditionalProps);
+                    String value = jsonObj.optString("treblle_mask_keywords", null);
+                    log.warn("[TREBLLE][MASK-DIAG] Approach 4 - parsed JSON 'treblle_mask_keywords': " + value);
+                    if (value != null && !value.isEmpty()) {
+                        maskKeywordsValue = value;
+                        foundVia = "additionalProperties JSON";
                     }
+                } catch (JSONException e) {
+                    log.warn("[TREBLLE][MASK-DIAG] Approach 4 - failed to parse additionalProperties JSON: " + e.getMessage());
+                }
+            } else if (mcAdditionalProps instanceof Map) {
+                Object value = ((Map) mcAdditionalProps).get("treblle_mask_keywords");
+                log.warn("[TREBLLE][MASK-DIAG] Approach 4 - Map 'treblle_mask_keywords': " + value);
+                if (value instanceof String && !((String) value).isEmpty()) {
+                    maskKeywordsValue = (String) value;
+                    foundVia = "additionalProperties Map";
+                }
+            }
+        }
+
+        // --- Approach 5: api.ut.* prefixed property directly ---
+        if (maskKeywordsValue == null) {
+            Object apiUtDirect = messageContext.getProperty("api.ut.treblle_mask_keywords");
+            log.warn("[TREBLLE][MASK-DIAG] Approach 5 - MC property 'api.ut.treblle_mask_keywords': " + apiUtDirect);
+            if (apiUtDirect instanceof String && !((String) apiUtDirect).isEmpty()) {
+                maskKeywordsValue = (String) apiUtDirect;
+                foundVia = "api.ut.treblle_mask_keywords";
+            }
+        }
+
+        // --- Diagnostic: dump all MC properties containing "treblle", "mask", "keyword", "additional" ---
+        log.warn("[TREBLLE][MASK-DIAG] --- Scanning all Synapse MC properties for relevant keys ---");
+        Set<String> propKeys = messageContext.getPropertyKeySet();
+        if (propKeys != null) {
+            for (String key : propKeys) {
+                String keyLower = key.toLowerCase();
+                if (keyLower.contains("treblle") || keyLower.contains("mask") || keyLower.contains("keyword") || keyLower.contains("additional") || keyLower.startsWith("api.ut.")) {
+                    Object val = messageContext.getProperty(key);
+                    String valStr = val == null ? "null" : val.toString();
+                    if (valStr.length() > 300) valStr = valStr.substring(0, 300) + "...";
+                    log.warn("[TREBLLE][MASK-DIAG] MC prop: '" + key + "' = " + valStr + " (type: " + (val == null ? "null" : val.getClass().getSimpleName()) + ")");
+                }
+            }
+        }
+
+        // --- Diagnostic: dump Axis2 MC properties for same keys ---
+        if (messageContext instanceof Axis2MessageContext) {
+            org.apache.axis2.context.MessageContext axis2MC = ((Axis2MessageContext) messageContext).getAxis2MessageContext();
+            if (axis2MC != null) {
+                log.warn("[TREBLLE][MASK-DIAG] --- Scanning Axis2 MC properties for relevant keys ---");
+                for (String key : new String[]{"treblle_mask_keywords", "additionalProperties", "api.ut.additionalProperties"}) {
+                    Object val = axis2MC.getProperty(key);
+                    log.warn("[TREBLLE][MASK-DIAG] Axis2 MC prop '" + key + "': " + val + " (type: " + (val == null ? "null" : val.getClass().getName()) + ")");
                 }
             }
         }
 
         if (maskKeywordsValue == null) {
-            if (log.isDebugEnabled()) {
-                log.debug("Treblle: No per-API mask keywords found for API " + (apiUuid != null ? apiUuid : "unknown"));
-            }
-            // Cache the negative result to prevent retrying the registry on every request
+            log.warn("[TREBLLE][MASK-DIAG] RESULT: No per-API mask keywords found for API " + (apiUuid != null ? apiUuid : "unknown") + " after all approaches");
             if (apiUuid != null) {
                 apiMaskKeywordsCache.put(apiUuid, Collections.emptyList());
             }
             return null;
         }
 
-        // Parse comma-separated keywords, trimming whitespace
+        log.warn("[TREBLLE][MASK-DIAG] RESULT: Found per-API mask keywords via [" + foundVia + "]: " + maskKeywordsValue);
+
         List<String> keywords = Arrays.stream(maskKeywordsValue.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
 
-        // Cache by API UUID if available (empty list is a sentinel for "no keywords")
         if (apiUuid != null) {
             apiMaskKeywordsCache.put(apiUuid, keywords.isEmpty() ? Collections.emptyList() : keywords);
         }

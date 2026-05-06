@@ -57,7 +57,7 @@ Execute the following command from the root directory:
 mvn clean install
 ```
 
-The JAR artifact will be created in the `target/` directory as `treblle-data-publisher-4.3.x-1.0.0.jar`
+The JAR artifact will be created in the `target/` directory as `treblle-wso2-3.0.0.jar`
 
 ### Building for Specific WSO2 Versions
 
@@ -80,7 +80,7 @@ mvn clean install -P wso2am-4.3
 mvn clean install -P wso2am-4.4
 ```
 
-The JAR artifact name will include the version suffix (e.g., `treblle-data-publisher-4.0.x-1.0.0.jar`).
+All profiles produce the same JAR name: `treblle-wso2-3.0.0.jar`.
 
 ### Build All Versions at Once
 
@@ -99,12 +99,7 @@ mvn clean install -P wso2am-4.0,wso2am-4.1,wso2am-4.2,wso2am-4.3,wso2am-4.4
 Copy the built JAR artifact that matches your WSO2 version to your API Manager gateway:
 
 ```sh
-# Example for WSO2 APIM 4.3.x (default)
-cp target/treblle-data-publisher-4.3.x-1.0.0.jar <APIM_HOME>/repository/components/lib/
-
-# For other versions, use the appropriate JAR file
-# cp target/treblle-data-publisher-4.0.x-1.0.0.jar <APIM_HOME>/repository/components/lib/
-# cp target/treblle-data-publisher-4.1.x-1.0.0.jar <APIM_HOME>/repository/components/lib/
+cp target/treblle-wso2-3.0.0.jar <APIM_HOME>/repository/components/lib/
 ```
 
 Replace `<APIM_HOME>` with your WSO2 API Manager installation directory.
@@ -285,7 +280,7 @@ grep -i treblle wso2carbon.log
 
 **Verify JAR location:**
 ```sh
-ls -la <APIM_HOME>/repository/components/lib/treblle-data-publisher-*.jar
+ls -la <APIM_HOME>/repository/components/lib/treblle-wso2-3.0.0.jar
 
 # Ensure the version matches your WSO2 APIM version
 ```

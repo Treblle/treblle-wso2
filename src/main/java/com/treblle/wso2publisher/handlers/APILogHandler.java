@@ -893,45 +893,28 @@ public class APILogHandler extends AbstractHandler {
         return config;
     }
 
-    /**
-     * Try up to 5 property locations to find the per-API mask keywords value.
-     * All diagnostic output is guarded by isDebugEnabled() so it never runs in production.
-     */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private String resolveMaskKeywordsValue(MessageContext messageContext, String apiUuid) {
         // Approach 1: direct Synapse MessageContext property
         Object directProp = messageContext.getProperty("treblle_mask_keywords");
-        if (log.isDebugEnabled()) {
-            log.debug("[TREBLLE][MASK-DIAG] Approach 1 - direct MC 'treblle_mask_keywords': " + directProp);
-        }
         if (directProp instanceof String && !((String) directProp).isEmpty()) {
             return (String) directProp;
         }
 
         // Approach 2: handler-level Properties injected via velocity template setter
-        Properties handlerProps = getAdditionalProperties();
-        String handlerPropsValue = handlerProps.getProperty("treblle_mask_keywords");
-        if (log.isDebugEnabled()) {
-            log.debug("[TREBLLE][MASK-DIAG] Approach 2 - handler additionalProperties 'treblle_mask_keywords': " + handlerPropsValue);
-        }
+        String handlerPropsValue = getAdditionalProperties().getProperty("treblle_mask_keywords");
         if (handlerPropsValue != null && !handlerPropsValue.isEmpty()) {
             return handlerPropsValue;
         }
 
         // Approach 3: api.ut.additionalProperties JSON string or Map
         Object apiUtProps = messageContext.getProperty("api.ut.additionalProperties");
-        if (log.isDebugEnabled()) {
-            log.debug("[TREBLLE][MASK-DIAG] Approach 3 - MC 'api.ut.additionalProperties': " +
-                (apiUtProps == null ? "null" : apiUtProps.getClass().getSimpleName()));
-        }
         if (apiUtProps instanceof String && !((String) apiUtProps).isEmpty()) {
             try {
                 String value = new JSONObject((String) apiUtProps).optString("treblle_mask_keywords", null);
                 if (value != null && !value.isEmpty()) return value;
             } catch (JSONException e) {
-                if (log.isDebugEnabled()) {
-                    log.debug("[TREBLLE][MASK-DIAG] Approach 3 - failed to parse JSON: " + e.getMessage());
-                }
+                log.debug("[TREBLLE]: Failed to parse api.ut.additionalProperties JSON: " + e.getMessage());
             }
         } else if (apiUtProps instanceof Map) {
             Object value = ((Map) apiUtProps).get("treblle_mask_keywords");
@@ -940,18 +923,12 @@ public class APILogHandler extends AbstractHandler {
 
         // Approach 4: additionalProperties JSON string or Map
         Object mcAdditionalProps = messageContext.getProperty("additionalProperties");
-        if (log.isDebugEnabled()) {
-            log.debug("[TREBLLE][MASK-DIAG] Approach 4 - MC 'additionalProperties': " +
-                (mcAdditionalProps == null ? "null" : mcAdditionalProps.getClass().getSimpleName()));
-        }
         if (mcAdditionalProps instanceof String && !((String) mcAdditionalProps).isEmpty()) {
             try {
                 String value = new JSONObject((String) mcAdditionalProps).optString("treblle_mask_keywords", null);
                 if (value != null && !value.isEmpty()) return value;
             } catch (JSONException e) {
-                if (log.isDebugEnabled()) {
-                    log.debug("[TREBLLE][MASK-DIAG] Approach 4 - failed to parse JSON: " + e.getMessage());
-                }
+                log.debug("[TREBLLE]: Failed to parse additionalProperties JSON: " + e.getMessage());
             }
         } else if (mcAdditionalProps instanceof Map) {
             Object value = ((Map) mcAdditionalProps).get("treblle_mask_keywords");
@@ -960,39 +937,8 @@ public class APILogHandler extends AbstractHandler {
 
         // Approach 5: api.ut.* prefixed property directly
         Object apiUtDirect = messageContext.getProperty("api.ut.treblle_mask_keywords");
-        if (log.isDebugEnabled()) {
-            log.debug("[TREBLLE][MASK-DIAG] Approach 5 - MC 'api.ut.treblle_mask_keywords': " + apiUtDirect);
-        }
         if (apiUtDirect instanceof String && !((String) apiUtDirect).isEmpty()) {
             return (String) apiUtDirect;
-        }
-
-        // Diagnostic full property scan — only when debug logging is explicitly enabled
-        if (log.isDebugEnabled()) {
-            log.debug("[TREBLLE][MASK-DIAG] No mask keywords found for API " + (apiUuid != null ? apiUuid : "unknown"));
-            Set<String> propKeys = messageContext.getPropertyKeySet();
-            if (propKeys != null) {
-                for (String key : propKeys) {
-                    String keyLower = key.toLowerCase();
-                    if (keyLower.contains("treblle") || keyLower.contains("mask") ||
-                            keyLower.contains("keyword") || keyLower.contains("additional") ||
-                            keyLower.startsWith("api.ut.")) {
-                        Object val = messageContext.getProperty(key);
-                        String valStr = val == null ? "null" : val.toString();
-                        if (valStr.length() > 300) valStr = valStr.substring(0, 300) + "...";
-                        log.debug("[TREBLLE][MASK-DIAG] MC prop: '" + key + "' = " + valStr);
-                    }
-                }
-            }
-            if (messageContext instanceof Axis2MessageContext) {
-                org.apache.axis2.context.MessageContext axis2MC =
-                        ((Axis2MessageContext) messageContext).getAxis2MessageContext();
-                if (axis2MC != null) {
-                    for (String key : new String[]{"treblle_mask_keywords", "additionalProperties", "api.ut.additionalProperties"}) {
-                        log.debug("[TREBLLE][MASK-DIAG] Axis2 MC prop '" + key + "': " + axis2MC.getProperty(key));
-                    }
-                }
-            }
         }
 
         return null;

@@ -90,18 +90,33 @@ public class APILogHandler extends AbstractHandler {
     }
 
     public void setAdditionalProperties(String additionalPropertiesJsonXmlEscaped) {
-        if (log.isDebugEnabled()) {
-            log.debug("[TREBLLE]:setAdditionalProperties(" + additionalPropertiesJsonXmlEscaped + ")");
-        }
+        log.warn("[TREBLLE]:setAdditionalProperties called with: " + additionalPropertiesJsonXmlEscaped);
         this.additionalProperties.clear();
         if (additionalPropertiesJsonXmlEscaped != null && !additionalPropertiesJsonXmlEscaped.trim().isEmpty()) {
             String additionalPropertiesJson = StringEscapeUtils.unescapeXml(additionalPropertiesJsonXmlEscaped);
             try {
                 JSONObject jsonObject = new JSONObject(additionalPropertiesJson);
                 this.additionalProperties.putAll(PropertyUtils.toProperties(jsonObject));
+                log.warn("[TREBLLE]:additionalProperties parsed OK, keys: " + this.additionalProperties.stringPropertyNames());
             } catch (JSONException e) {
                 log.warn("[TREBLLE]:Unable to parse additionalProperties JSON - " + e.getMessage());
             }
+        }
+    }
+
+    // Called by Synapse when velocity template injects: <property name="treblleMaskKeywords" value="..."/>
+    public void setTreblleMaskKeywords(String value) {
+        log.warn("[TREBLLE]:setTreblleMaskKeywords called with: " + value);
+        if (value != null && !value.trim().isEmpty()) {
+            this.additionalProperties.setProperty("treblle_mask_keywords", value.trim());
+        }
+    }
+
+    // Called by Synapse when velocity template injects: <property name="treblleDisableResponseBody" value="..."/>
+    public void setTreblleDisableResponseBody(String value) {
+        log.warn("[TREBLLE]:setTreblleDisableResponseBody called with: " + value);
+        if (value != null && !value.trim().isEmpty()) {
+            this.additionalProperties.setProperty("treblle_disable_response_body", value.trim());
         }
     }
 

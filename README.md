@@ -123,10 +123,15 @@ Find the handlers section with the SchemaValidator and add the Treblle handler *
 <handler class="org.wso2.carbon.apimgt.gateway.handlers.security.SchemaValidator"/>
 #end
 ## Treblle API Observability Handler Injection
-#if( $apiObj.additionalProperties.get("treblle_enabled") || $apiObj.additionalProperties.get("treblle_enabled") == "true" )
+#if( $apiObj.additionalProperties.get("treblle_enabled") == "true" )
 <handler class="com.treblle.wso2publisher.handlers.APILogHandler">
-    #if( $additionalPropertiesJson && "$additionalPropertiesJson" != "" )
-    <property name="additionalProperties" value="$util.escapeXml($additionalPropertiesJson)"/>
+    #set($treblleMaskKw = $apiObj.additionalProperties.get("treblle_mask_keywords"))
+    #if( $treblleMaskKw && "$treblleMaskKw" != "" )
+    <property name="treblleMaskKeywords" value="$util.escapeXml($treblleMaskKw)"/>
+    #end
+    #set($treblleDisableBody = $apiObj.additionalProperties.get("treblle_disable_response_body"))
+    #if( $treblleDisableBody && "$treblleDisableBody" != "" )
+    <property name="treblleDisableResponseBody" value="$util.escapeXml($treblleDisableBody)"/>
     #end
 </handler>
 #end

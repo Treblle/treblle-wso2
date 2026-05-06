@@ -39,11 +39,11 @@ public class DataHolder {
             try {
                 queueSize = Integer.parseInt(System.getenv(TREBLLE_QUEUE_SIZE));
                 if (queueSize < 1) {
-                    log.warn("TREBLLE_QUEUE_SIZE must be at least 1. Using default: " + DEFAULT_QUEUE_SIZE);
+                    log.warn("[TREBLLE]: TREBLLE_QUEUE_SIZE must be at least 1. Using default: " + DEFAULT_QUEUE_SIZE);
                     queueSize = DEFAULT_QUEUE_SIZE;
                 }
             } catch (NumberFormatException e) {
-                log.warn("Invalid TREBLLE_QUEUE_SIZE value. Using default: " + DEFAULT_QUEUE_SIZE, e);
+                log.warn("[TREBLLE]: Invalid TREBLLE_QUEUE_SIZE value. Using default: " + DEFAULT_QUEUE_SIZE, e);
                 queueSize = DEFAULT_QUEUE_SIZE;
             }
         }
@@ -53,11 +53,11 @@ public class DataHolder {
             try {
                 workerThreads = Integer.parseInt(System.getenv(TREBLLE_WORKER_THREADS));
                 if (workerThreads < 1) {
-                    log.warn("TREBLLE_WORKER_THREADS must be at least 1. Using default: " + DEFAULT_WORKER_THREADS);
+                    log.warn("[TREBLLE]: TREBLLE_WORKER_THREADS must be at least 1. Using default: " + DEFAULT_WORKER_THREADS);
                     workerThreads = DEFAULT_WORKER_THREADS;
                 }
             } catch (NumberFormatException e) {
-                log.warn("Invalid TREBLLE_WORKER_THREADS value. Using default: " + DEFAULT_WORKER_THREADS, e);
+                log.warn("[TREBLLE]: Invalid TREBLLE_WORKER_THREADS value. Using default: " + DEFAULT_WORKER_THREADS, e);
                 workerThreads = DEFAULT_WORKER_THREADS;
             }
         }
@@ -94,12 +94,12 @@ public class DataHolder {
                 .setConnectionManagerShared(false)
                 .build();
 
-        log.debug("Initialized pooled HTTP client with max connections: 100, per route: 20");
+        log.debug("[TREBLLE]: Initialized pooled HTTP client with max connections: 100, per route: 20");
 
         // Initialize the event queue with the specified size, worker threads, and HTTP client
         eventQueue = new EventQueue(queueSize, workerThreads, httpClient);
-        log.debug("DataHolder initialized with queue size: " + queueSize + " and worker threads: " + workerThreads);
-        log.debug("Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
+        log.debug("[TREBLLE]: DataHolder initialized with queue size: " + queueSize + " and worker threads: " + workerThreads);
+        log.debug("[TREBLLE]: Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
     }
 
     public static DataHolder getInstance() {
@@ -135,7 +135,7 @@ public class DataHolder {
                 enabledTenantDomains.put(tenantDomain.trim(), tenantDomain.trim());
             }
         }
-        log.debug("Reloaded Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
+        log.debug("[TREBLLE]: Reloaded Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
     }
 
     /**
@@ -143,7 +143,7 @@ public class DataHolder {
      * Should be called during application shutdown.
      */
     public void shutdown() {
-        log.info("Shutting down Treblle DataHolder resources");
+        log.info("[TREBLLE]: Shutting down DataHolder resources");
 
         // Shutdown event queue and worker threads
         if (eventQueue != null) {
@@ -154,15 +154,15 @@ public class DataHolder {
         if (httpClient != null) {
             try {
                 httpClient.close();
-                log.debug("HTTP client closed successfully");
+                log.debug("[TREBLLE]: HTTP client closed successfully");
             } catch (IOException e) {
-                log.error("Error closing HTTP client", e);
+                log.error("[TREBLLE]: Error closing HTTP client", e);
             }
         }
 
         if (connectionManager != null) {
             connectionManager.close();
-            log.debug("Connection manager closed successfully");
+            log.debug("[TREBLLE]: Connection manager closed successfully");
         }
     }
 }

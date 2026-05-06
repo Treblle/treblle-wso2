@@ -88,7 +88,7 @@ public class PublisherClient {
         this.customGatewayUrl = (envGatewayUrl != null && !envGatewayUrl.trim().isEmpty())
                 ? envGatewayUrl.trim() : null;
 
-        log.debug("Masking keywords: " + maskKeywordsList);
+        log.debug("[TREBLLE]: Masking keywords: " + maskKeywordsList);
     }
 
 
@@ -100,7 +100,7 @@ public class PublisherClient {
 
         // Null check for payload
         if (payload == null) {
-            log.error("Payload is null. Skipping event publication.");
+            log.error("[TREBLLE]: Payload is null. Skipping event publication.");
             return;
         }
 
@@ -113,6 +113,8 @@ public class PublisherClient {
         int statusCode = 0;
         String reasonPhrase = "";
 
+        final long publishStart = log.isDebugEnabled() ? System.nanoTime() : 0;
+
         // Use try-with-resources to ensure response is properly closed
         try (CloseableHttpResponse response = maskAndSendPayload(payload, gatewayUrl)) {
             if (response != null) {
@@ -121,24 +123,26 @@ public class PublisherClient {
 
                 // Log response details for debugging
                 if (log.isDebugEnabled()) {
-                    log.debug("Response status: " + statusCode + " " + reasonPhrase);
-                    log.debug("Response headers: " + java.util.Arrays.toString(response.getAllHeaders()));
+                    log.debug("[TREBLLE]: Response status: " + statusCode + " " + reasonPhrase);
+                    log.debug("[TREBLLE]: Response headers: " + java.util.Arrays.toString(response.getAllHeaders()));
+                    log.debug(String.format("[TREBLLE]: perf publish (mask+serialize+HTTP): %.2f ms (status: %d, url: %s)",
+                            (System.nanoTime() - publishStart) / 1_000_000.0, statusCode, gatewayUrl));
                 }
             }
         } catch (IOException e) {
-            log.error("Error closing HTTP response for SDK token: " + sdkToken, e);
+            log.error("[TREBLLE]: Error closing HTTP response for SDK token: " + sdkToken, e);
         }
 
         if (statusCode == 200 || statusCode == 201 || statusCode == 202 || statusCode == 204) {
-            log.debug("Event successfully published.");
+            log.debug("[TREBLLE]: Event successfully published.");
         } else if (statusCode >= 400 && statusCode < 500) {
-            log.error("Event publishing failed for SDK token: " + sdkToken + " with status code: " + statusCode
+            log.error("[TREBLLE]: Event publishing failed for SDK token: " + sdkToken + " with status code: " + statusCode
                     + " and reason: " + reasonPhrase + ". Event will be dropped.");
         } else if (statusCode >= 500) {
-            log.error("Event publishing failed for SDK token: " + sdkToken + " with status code: " + statusCode
+            log.error("[TREBLLE]: Event publishing failed for SDK token: " + sdkToken + " with status code: " + statusCode
                     + " and reason: " + reasonPhrase + ". Event will be dropped.");
         } else {
-            log.error("Event publishing failed for SDK token: " + sdkToken + " with unexpected status code: "
+            log.error("[TREBLLE]: Event publishing failed for SDK token: " + sdkToken + " with unexpected status code: "
                     + statusCode + ". Event will be dropped.");
         }
 
@@ -173,14 +177,14 @@ public class PublisherClient {
         httpPost.setHeader(HttpHeaders.ACCEPT_ENCODING, "gzip, deflate");
 
         if (log.isDebugEnabled()) {
-            log.debug("Sending request to: " + baseUrl);
-            log.debug("x-api-key header set to: " + (sdkTokenValue != null ? sdkTokenValue : "NULL"));
+            log.debug("[TREBLLE]: Sending request to: " + baseUrl);
+            log.debug("[TREBLLE]: x-api-key header set to: " + (sdkTokenValue != null ? sdkTokenValue : "NULL"));
         }
 
         try {
             org.json.JSONObject requestBody = buildRequestBodyForTrebllePayload(payload);
             if (log.isDebugEnabled()) {
-                log.debug("Treblle Payload - " + requestBody);
+                log.debug("[TREBLLE]: Payload - " + requestBody);
             }
 
             // Create entity and wrap with gzip compression
@@ -191,7 +195,7 @@ public class PublisherClient {
             // Use pooled HTTP client for connection reuse
             return httpClient.execute(httpPost);
         } catch (IOException e) {
-            log.error("Error sending payload to Treblle: " + e.getMessage(), e);
+            log.error("[TREBLLE]: Error sending payload: " + e.getMessage(), e);
         }
 
         return null;
@@ -346,7 +350,7 @@ public class PublisherClient {
                 return new org.json.JSONObject(OBJECT_MAPPER.convertValue(node, java.util.Map.class));
             }
         } catch (Exception e) {
-            log.warn("Failed to convert JsonNode to org.json type: " + e.getMessage() + ". Using empty object as fallback.");
+            log.warn("[TREBLLE]: Failed to convert JsonNode to org.json type: " + e.getMessage() + ". Using empty object as fallback.");
             return new org.json.JSONObject();
         }
     }

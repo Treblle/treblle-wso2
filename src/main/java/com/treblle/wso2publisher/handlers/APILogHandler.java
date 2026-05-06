@@ -839,7 +839,6 @@ public class APILogHandler extends AbstractHandler {
      * @param apiUuid the API UUID for cache keying (may be null)
      * @return list of per-API mask keywords, or null if not configured
      */
-    @SuppressWarnings("unchecked")
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<String> getPerApiMaskKeywords(MessageContext messageContext, String apiUuid) {
         // Check cache first if we have an API UUID

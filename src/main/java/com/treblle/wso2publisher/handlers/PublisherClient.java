@@ -112,7 +112,7 @@ public class PublisherClient {
                 if (log.isDebugEnabled()) {
                     log.debug("[TREBLLE]: Response status: " + statusCode + " " + reasonPhrase);
                     log.debug("[TREBLLE]: Response headers: " + java.util.Arrays.toString(response.getAllHeaders()));
-                    log.debug(String.format("[TREBLLE]: Perfromance publish (mask+serialize+HTTP): %.2f ms (status: %d, url: %s)",
+                    log.debug(String.format("[TREBLLE]: Performance Total (mask+serialize+HTTP): %.2f ms (status: %d, url: %s)",
                             (System.nanoTime() - publishStart) / 1_000_000.0, statusCode, gatewayUrl));
                 }
             }

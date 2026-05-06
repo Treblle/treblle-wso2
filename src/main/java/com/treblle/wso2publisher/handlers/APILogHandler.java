@@ -220,7 +220,7 @@ public class APILogHandler extends AbstractHandler {
             }
 
             if (log.isDebugEnabled()) {
-                log.debug(String.format("[TREBLLE]: Perfromance handleRequest: %.2f ms", (System.nanoTime() - reqStart) / 1_000_000.0));
+                log.debug(String.format("[TREBLLE]: Performance handleRequest: %.2f ms", (System.nanoTime() - reqStart) / 1_000_000.0));
             }
             return true;
         } catch (Exception e) {
@@ -258,14 +258,14 @@ public class APILogHandler extends AbstractHandler {
             final long payloadStart = log.isDebugEnabled() ? System.nanoTime() : 0;
             TrebllePayload payload = createPayload(messageContext, DataHolder.getInstance().getGatewayURL());
             if (log.isDebugEnabled()) {
-                log.debug(String.format("[TREBLLE]: Perfromance handleResponse.createPayload: %.2f ms", (System.nanoTime() - payloadStart) / 1_000_000.0));
+                log.debug(String.format("[TREBLLE]: Performance handleResponse.createPayload: %.2f ms", (System.nanoTime() - payloadStart) / 1_000_000.0));
                 log.debug("[TREBLLE]:Payload created, enqueueing...");
             }
             // Add the payload to the event queue for processing
             final long enqueueStart = log.isDebugEnabled() ? System.nanoTime() : 0;
             DataHolder.getInstance().getEventQueue().put(payload);
             if (log.isDebugEnabled()) {
-                log.debug(String.format("[TREBLLE]: Perfromance handleResponse.enqueue: %.2f ms", (System.nanoTime() - enqueueStart) / 1_000_000.0));
+                log.debug(String.format("[TREBLLE]: Performance handleResponse.enqueue: %.2f ms", (System.nanoTime() - enqueueStart) / 1_000_000.0));
                 log.debug("[TREBLLE]: Payload enqueued successfully");
             }
             return true;

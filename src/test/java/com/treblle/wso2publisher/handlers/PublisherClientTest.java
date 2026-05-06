@@ -113,7 +113,7 @@ public class PublisherClientTest {
         request.setHeaders(new HashMap<>());
 
         // Set a request body with custom fields that should be masked by per-API keywords
-        request.setBodyRaw("{\"account_number\":\"123456789\",\"name\":\"John\"}");
+        request.setBodyRaw("{\"account_number\":\"123456789\",\"transaction_id\":\"TXN-001\"}");
         data.setRequest(request);
 
         Response response = new Response();
@@ -149,7 +149,7 @@ public class PublisherClientTest {
         org.json.JSONObject requestJson = dataJson.getJSONObject("request");
         org.json.JSONObject reqBodyJson = requestJson.getJSONObject("body");
         Assert.assertEquals("****", reqBodyJson.getString("account_number"));
-        Assert.assertEquals("John", reqBodyJson.getString("name")); // should NOT be masked
+        Assert.assertEquals("TXN-001", reqBodyJson.getString("transaction_id")); // should NOT be masked
 
         org.json.JSONObject responseJson = dataJson.getJSONObject("response");
         org.json.JSONObject resBodyJson = responseJson.getJSONObject("body");

@@ -79,7 +79,7 @@ public class DataHolder {
         // Initialize pooled HTTP client for efficient connection reuse
         connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(100);
-        connectionManager.setDefaultMaxPerRoute(20);
+        connectionManager.setDefaultMaxPerRoute(100);
         connectionManager.setValidateAfterInactivity(30000);
 
         RequestConfig requestConfig = RequestConfig.custom()
@@ -94,7 +94,7 @@ public class DataHolder {
                 .setConnectionManagerShared(false)
                 .build();
 
-        log.debug("[TREBLLE]: Initialized pooled HTTP client with max connections: 100, per route: 20");
+        log.debug("[TREBLLE]: Initialized pooled HTTP client with max connections: 100, per route: 100");
 
         // Initialize the event queue with the specified size, worker threads, and HTTP client
         eventQueue = new EventQueue(queueSize, workerThreads, httpClient);

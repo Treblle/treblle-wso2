@@ -20,7 +20,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * PublisherClient is responsible for sending events.
@@ -30,15 +29,7 @@ public class PublisherClient {
     // Logger for logging messages
     private static final Log log = LogFactory.getLog(PublisherClient.class);
 
-    // Array of base URLs for the Treblle service
-    private static final String[] BASE_URLS = {
-            "https://rocknrolla.treblle.com",
-            "https://punisher.treblle.com",
-            "https://sicario.treblle.com"
-    };
-
-    // Round-robin endpoint index for load balancing
-    private static final AtomicInteger endpointIndex = new AtomicInteger(0);
+    private static final String DEFAULT_URL = "https://ingress.treblle.com";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -56,7 +47,7 @@ public class PublisherClient {
     // API Key for the Treblle project
     private String apiKey;
 
-    // Custom gateway URL, cached at construction time (null means use round-robin defaults)
+    // Custom gateway URL, cached at construction time (null means use DEFAULT_URL)
     private final String customGatewayUrl;
 
     /**
@@ -108,7 +99,7 @@ public class PublisherClient {
         payload.setSdkToken(sdkToken);
         payload.setApiKey(apiKey);
 
-        String gatewayUrl = (customGatewayUrl != null) ? customGatewayUrl : getNextBaseUrl();
+        String gatewayUrl = (customGatewayUrl != null) ? customGatewayUrl : DEFAULT_URL;
 
         int statusCode = 0;
         String reasonPhrase = "";
@@ -125,7 +116,7 @@ public class PublisherClient {
                 if (log.isDebugEnabled()) {
                     log.debug("[TREBLLE]: Response status: " + statusCode + " " + reasonPhrase);
                     log.debug("[TREBLLE]: Response headers: " + java.util.Arrays.toString(response.getAllHeaders()));
-                    log.debug(String.format("[TREBLLE]: perf publish (mask+serialize+HTTP): %.2f ms (status: %d, url: %s)",
+                    log.debug(String.format("[TREBLLE]: Perfromance publish (mask+serialize+HTTP): %.2f ms (status: %d, url: %s)",
                             (System.nanoTime() - publishStart) / 1_000_000.0, statusCode, gatewayUrl));
                 }
             }
@@ -147,17 +138,6 @@ public class PublisherClient {
         }
 
     }
-
-    /**
-     * Method to get the next base URL using round-robin load balancing.
-     *
-     * @return the next base URL in round-robin order
-     */
-    private static String getNextBaseUrl() {
-        int index = endpointIndex.getAndUpdate(i -> (i + 1) % BASE_URLS.length);
-        return BASE_URLS[index];
-    }
-
 
     /**
      * Method to mask sensitive data and send the payload to the Treblle service.
@@ -182,8 +162,11 @@ public class PublisherClient {
         }
 
         try {
+            final long buildStart = log.isDebugEnabled() ? System.nanoTime() : 0;
             org.json.JSONObject requestBody = buildRequestBodyForTrebllePayload(payload);
             if (log.isDebugEnabled()) {
+                log.debug(String.format("[TREBLLE]: Performance buildPayload (mask+serialize): %.2f ms",
+                        (System.nanoTime() - buildStart) / 1_000_000.0));
                 log.debug("[TREBLLE]: Payload - " + requestBody);
             }
 

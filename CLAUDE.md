@@ -132,11 +132,18 @@ Add the handler **after** the SchemaValidator in the handlers section:
 #if($enableSchemaValidation)
 <handler class="org.wso2.carbon.apimgt.gateway.handlers.security.SchemaValidator"/>
 #end
-<handler class="com.treblle.wso2publisher.handlers.APILogHandler"/>
+## Treblle API Observability Handler Injection
+#if( $apiObj.additionalProperties.get("treblle_enabled") || $apiObj.additionalProperties.get("treblle_enabled") == "true" )
+<handler class="com.treblle.wso2publisher.handlers.APILogHandler">
+    #if( $additionalPropertiesJson && "$additionalPropertiesJson" != "" )
+    <property name="additionalProperties" value="$util.escapeXml($additionalPropertiesJson)"/>
+    #end
+</handler>
+#end
 </handlers>
 ```
 
-This ensures the handler runs after authentication and usage handlers, giving access to all enriched properties (tenant domain, application info, user data, API publisher).
+This ensures the handler runs after authentication and usage handlers, giving access to all enriched properties (tenant domain, application info, user data, API publisher). The handler is only injected for APIs with the `treblle_enabled` custom property set to `true` in the WSO2 Publisher portal.
 
 ## Troubleshooting and Debug Logging
 

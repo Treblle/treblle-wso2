@@ -118,13 +118,22 @@ Add the Treblle handler to `<APIM_HOME>/repository/resources/api_templates/veloc
 Find the handlers section with the SchemaValidator and add the Treblle handler **after** it:
 
 ```xml
-                ## check and set enable schema validation
-                #if($enableSchemaValidation)
+## check and set enable schema validation
+#if($enableSchemaValidation)
 <handler class="org.wso2.carbon.apimgt.gateway.handlers.security.SchemaValidator"/>
-                #end
-<handler class="com.treblle.wso2publisher.handlers.APILogHandler"/>
+#end
+## Treblle API Observability Handler Injection
+#if( $apiObj.additionalProperties.get("treblle_enabled") || $apiObj.additionalProperties.get("treblle_enabled") == "true" )
+<handler class="com.treblle.wso2publisher.handlers.APILogHandler">
+    #if( $additionalPropertiesJson && "$additionalPropertiesJson" != "" )
+    <property name="additionalProperties" value="$util.escapeXml($additionalPropertiesJson)"/>
+    #end
+</handler>
+#end
 </handlers>
 ```
+
+The `treblle_enabled` condition means the handler is only injected for APIs that have the `treblle_enabled` custom property set to `true` in the WSO2 Publisher portal. This gives you per-API opt-in control rather than enabling Treblle globally for all APIs.
 
 This ensures the handler runs in the proper sequence to access enriched properties (tenant domain, application info, user data, API publisher).
 
@@ -268,7 +277,7 @@ ls -la <APIM_HOME>/repository/components/lib/treblle-data-publisher-*.jar
 ```sh
 grep -i "treblle" <APIM_HOME>/repository/resources/api_templates/velocity_template.xml
 ```
-Ensure the handler entry is present in the handlers section after the SchemaValidator.
+Ensure the `#if( $apiObj.additionalProperties.get("treblle_enabled") ... )` block and the handler entry are present in the handlers section after the SchemaValidator.
 
 ### No data in Treblle dashboard
 

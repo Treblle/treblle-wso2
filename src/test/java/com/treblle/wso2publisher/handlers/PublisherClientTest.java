@@ -23,47 +23,11 @@ import java.util.Set;
 public class PublisherClientTest {
 
     @Test
-    public void getNextBaseUrl_ReturnsValidUrl() throws Exception {
-
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
-                DataHolder.getInstance().getHttpClient());
-        Method getNextBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getNextBaseUrl");
-        getNextBaseUrlMethod.setAccessible(true);
-
-        String url = (String) getNextBaseUrlMethod.invoke(publisherClient);
-        Assert.assertTrue(Arrays.asList("https://rocknrolla.treblle.com", "https://punisher.treblle.com", "https://sicario.treblle.com").contains(url));
-    }
-
-    @Test
-    public void getNextBaseUrl_MultipleCalls_ReturnsAllUrls() throws Exception {
-
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
-                DataHolder.getInstance().getHttpClient());
-        Method getNextBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getNextBaseUrl");
-        getNextBaseUrlMethod.setAccessible(true);
-
-        Set<String> urls = new HashSet<>();
-        for (int i = 0; i < 10; i++) {
-            String url = (String) getNextBaseUrlMethod.invoke(publisherClient);
-            urls.add(url);
-        }
-
-        // With round-robin, we should get all 3 URLs after 10 calls
-        Assert.assertTrue(urls.size() >= 3);
-    }
-
-    @Test
-    public void getNextBaseUrl_AlwaysReturnsNonNull() throws Exception {
-
-        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
-                DataHolder.getInstance().getHttpClient());
-        Method getNextBaseUrlMethod = PublisherClient.class.getDeclaredMethod("getNextBaseUrl");
-        getNextBaseUrlMethod.setAccessible(true);
-
-        for (int i = 0; i < 10; i++) {
-            String url = (String) getNextBaseUrlMethod.invoke(publisherClient);
-            Assert.assertNotNull(url);
-        }
+    public void defaultUrl_IsIngress() throws Exception {
+        java.lang.reflect.Field field = PublisherClient.class.getDeclaredField("DEFAULT_URL");
+        field.setAccessible(true);
+        String url = (String) field.get(null);
+        Assert.assertEquals("https://ingress.treblle.com", url);
     }
 
     @Test

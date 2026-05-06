@@ -1,7 +1,6 @@
 package com.treblle.wso2publisher.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Map;
 
@@ -16,7 +15,7 @@ public class Request {
 
   private String method;
   private Map<String, String> headers;
-  private JsonNode body;
+  private String bodyRaw;
 
   @JsonProperty("route_path")
   private String routePath;
@@ -69,12 +68,12 @@ public class Request {
     this.headers = headers;
   }
 
-  public JsonNode getBody() {
-    return body;
+  public String getBodyRaw() {
+    return bodyRaw;
   }
 
-  public void setBody(JsonNode body) {
-    this.body = body;
+  public void setBodyRaw(String bodyRaw) {
+    this.bodyRaw = bodyRaw;
   }
 
   public String getRoutePath() {

@@ -113,8 +113,7 @@ public class PublisherClientTest {
         request.setHeaders(new HashMap<>());
 
         // Set a request body with custom fields that should be masked by per-API keywords
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        request.setBody(mapper.readTree("{\"account_number\":\"123456789\",\"name\":\"John\"}"));
+        request.setBodyRaw("{\"account_number\":\"123456789\",\"name\":\"John\"}");
         data.setRequest(request);
 
         Response response = new Response();
@@ -122,7 +121,7 @@ public class PublisherClientTest {
         response.setSize(100L);
         response.setHeaders(new HashMap<>());
         response.setLoadTime(50.0);
-        response.setBody(mapper.readTree("{\"balance\":\"5000\",\"dob\":\"1990-01-01\"}"));
+        response.setBodyRaw("{\"balance\":\"5000\",\"dob\":\"1990-01-01\"}");
         data.setResponse(response);
 
         Server server = new Server();

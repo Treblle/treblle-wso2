@@ -52,7 +52,9 @@ public class APILogHandlerTest {
 
         // Verify request data captured
         Assert.assertEquals(headers, synCtx.getProperty("TREBLLE_REQ_HEADERS"));
-        Assert.assertNotNull(synCtx.getProperty("TREBLLE_REQ_BODY"));
+        // TREBLLE_REQ_BODY is a raw JSON String (may be null when no body is present)
+        Object reqBody = synCtx.getProperty("TREBLLE_REQ_BODY");
+        Assert.assertTrue(reqBody == null || reqBody instanceof String);
         Assert.assertEquals("/test", synCtx.getProperty("TREBLLE_REQ_PATH"));
         Assert.assertEquals("0:0:0:0:0:0:0:1", synCtx.getProperty("TREBLLE_REQ_IP"));
         Assert.assertEquals("POST", synCtx.getProperty("TREBLLE_REQ_METHOD"));

@@ -22,9 +22,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.wso2.carbon.apimgt.gateway.APIMgtGatewayConstants;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.treblle.wso2publisher.dto.Data;
 import com.treblle.wso2publisher.dto.Language;
 import com.treblle.wso2publisher.dto.Metadata;
@@ -74,7 +71,6 @@ public class APILogHandler extends AbstractHandler {
     private static final String API_ELECTED_RESOURCE = "API_ELECTED_RESOURCE";
     private static final String CARBON_LOCAL_IP = "carbon.local.ip";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MASK_KEYWORDS_CACHE_MAX_SIZE = 1000;
     private static final Cache<String, List<String>> apiMaskKeywordsCache = CacheBuilder.newBuilder()
         .maximumSize(MASK_KEYWORDS_CACHE_MAX_SIZE)
@@ -134,9 +130,13 @@ public class APILogHandler extends AbstractHandler {
             Map<String, String> headersMap = getHeaders(messageContext);
             messageContext.setProperty(TREBLLE_REQ_HEADERS, headersMap);
 
-            // Retrieve and set the request body
-            JsonNode jsonNode = getMessageBody(messageContext, headersMap);
-            messageContext.setProperty(TREBLLE_REQ_BODY, jsonNode);
+            // Skip body capture for methods that carry no body — avoids RelayUtils.buildMessage() cost
+            String reqBodyRaw = null;
+            if (!"GET".equalsIgnoreCase(httpMethod) && !"HEAD".equalsIgnoreCase(httpMethod)
+                    && !"DELETE".equalsIgnoreCase(httpMethod)) {
+                reqBodyRaw = getMessageBodyRaw(messageContext, headersMap);
+            }
+            messageContext.setProperty(TREBLLE_REQ_BODY, reqBodyRaw);
 
             // Retrieve and set the request path
             String reqPath = (String) axis2MsgContext.getProperty(REST_URL_POSTFIX);
@@ -336,8 +336,8 @@ public class APILogHandler extends AbstractHandler {
             log.error("[TREBLLE]: Request headers are null. Setting a default value.");
             reqHeaders = new HashMap<String, String>();
         }
-        // Retrieve the request body
-        JsonNode reqBody = (JsonNode) messageContext.getProperty(TREBLLE_REQ_BODY);
+        // Retrieve the raw request body string captured in handleRequest
+        String reqBodyRaw = (String) messageContext.getProperty(TREBLLE_REQ_BODY);
 
         // Create and initialize the Language object
         final Language language = new Language();
@@ -390,7 +390,7 @@ public class APILogHandler extends AbstractHandler {
         String reqUrl = (String) messageContext.getProperty(TREBLLE_REQ_URL);
         request.setUrl(reqUrl);
         request.setHeaders(reqHeaders);
-        request.setBody(reqBody);
+        request.setBodyRaw(reqBodyRaw);
 
         // Set the route path (API resource template pattern)
         String routePath = (String) messageContext.getProperty(TREBLLE_ROUTE_PATH);
@@ -435,16 +435,10 @@ public class APILogHandler extends AbstractHandler {
         // Set response properties
         response.setCode(responseCode);
         Map<String, String> responseHeaderMap = getHeaders(messageContext);
-        JsonNode jsonNode = getMessageBody(messageContext, responseHeaderMap);
-        response.setBody(jsonNode);
-
-        if (jsonNode != null) {
-            String jsonString = jsonNode.toString();
-            response.setSize((long) jsonString.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
-        } else {
-            response.setSize(0L);
-        }
-
+        String responseBodyRaw = getMessageBodyRaw(messageContext, responseHeaderMap);
+        response.setBodyRaw(responseBodyRaw);
+        response.setSize(responseBodyRaw != null
+                ? (long) responseBodyRaw.getBytes(java.nio.charset.StandardCharsets.UTF_8).length : 0L);
         response.setHeaders(responseHeaderMap);
         response.setLoadTime((double) getResponseTime(messageContext));
 
@@ -557,7 +551,7 @@ public class APILogHandler extends AbstractHandler {
         return headersMap;
     }
 
-    private JsonNode getMessageBody(MessageContext messageContext, Map<String, String> headers) {
+    private String getMessageBodyRaw(MessageContext messageContext, Map<String, String> headers) {
 
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
@@ -578,11 +572,11 @@ public class APILogHandler extends AbstractHandler {
             }
         }
 
-        // Try JSON first — covers application/json requests and response body validation
+        // Try JSON first — covers application/json and cases where Content-Type is missing/wrong
         try {
             String jsonStr = JsonUtil.jsonPayloadToString(axis2MsgContext);
             if (jsonStr != null && !jsonStr.isEmpty()) {
-                return OBJECT_MAPPER.readTree(jsonStr);
+                return jsonStr;
             }
         } catch (Exception e) {
             log.debug("[TREBLLE]: Body is not JSON: " + e.getMessage());
@@ -603,13 +597,13 @@ public class APILogHandler extends AbstractHandler {
                         formData.put(child.getLocalName(), child.getText());
                     }
                     if (!formData.isEmpty()) {
-                        return OBJECT_MAPPER.valueToTree(formData);
+                        return new JSONObject(formData).toString();
                     }
 
                     // Fallback: raw URL-encoded text in the body element
                     String rawText = bodyElement.getText();
                     if (rawText != null && !rawText.isEmpty()) {
-                        return parseUrlEncodedString(rawText);
+                        return parseUrlEncodedBodyRaw(rawText);
                     }
                 }
             } catch (Exception e) {
@@ -620,7 +614,7 @@ public class APILogHandler extends AbstractHandler {
         return null;
     }
 
-    private JsonNode parseUrlEncodedString(String raw) {
+    private String parseUrlEncodedBodyRaw(String raw) {
         Map<String, String> params = new HashMap<>();
         for (String pair : raw.split("&")) {
             int idx = pair.indexOf('=');
@@ -634,7 +628,7 @@ public class APILogHandler extends AbstractHandler {
                 }
             }
         }
-        return params.isEmpty() ? null : OBJECT_MAPPER.valueToTree(params);
+        return params.isEmpty() ? null : new JSONObject(params).toString();
     }
 
     private String getServerIpAddress() {

@@ -10,8 +10,6 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.treblle.wso2publisher.dto.TrebllePayload;
 
 import java.io.IOException;
@@ -30,8 +28,6 @@ public class PublisherClient {
     private static final Log log = LogFactory.getLog(PublisherClient.class);
 
     private static final String DEFAULT_URL = "https://ingress.treblle.com";
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // Array of keywords to be masked in the payload
     private static final String[] MASK_KEYWORDS = {
@@ -223,12 +219,7 @@ public class PublisherClient {
             request.put("route_path", trebllePayload.getData().getRequest().getRoutePath());
         }
 
-        JsonNode reqBody = trebllePayload.getData().getRequest().getBody();
-        if (reqBody != null) {
-            request.put("body", convertJsonNodeToOrgJson(reqBody));
-        } else {
-            request.put("body", new org.json.JSONObject());
-        }
+        request.put("body", parseBodyRaw(trebllePayload.getData().getRequest().getBodyRaw()));
 
         data.put("request", request);
 
@@ -238,17 +229,12 @@ public class PublisherClient {
         response.put("headers", new org.json.JSONObject(trebllePayload.getData().getResponse().getHeaders()));
         response.put("load_time", trebllePayload.getData().getResponse().getLoadTime());
 
-        JsonNode responseBody = trebllePayload.getData().getResponse().getBody();
-        if (responseBody != null) {
-            response.put("body", convertJsonNodeToOrgJson(responseBody));
-        } else {
-            response.put("body", new org.json.JSONObject());
-        }
-
-        // If response body capture is disabled, replace body with empty object and size with 0
+        // If response body capture is disabled, omit body content and reset size
         if (trebllePayload.isDisableResponseBody()) {
             response.put("body", new org.json.JSONObject());
             response.put("size", 0);
+        } else {
+            response.put("body", parseBodyRaw(trebllePayload.getData().getResponse().getBodyRaw()));
         }
 
         data.put("response", response);
@@ -307,33 +293,17 @@ public class PublisherClient {
     }
 
     /**
-     * Convert a Jackson JsonNode to an appropriate org.json object type.
-     * Handles different node types (Object, Array, String, Number, Boolean, Null).
-     *
-     * @param node the Jackson JsonNode to convert
-     * @return the appropriate org.json type (JSONObject, JSONArray, String, Number, Boolean, or JSONObject.NULL)
+     * Parse a raw JSON string into an org.json value (JSONObject or JSONArray).
+     * Runs in the worker thread — keeps the critical handler path free of Jackson parsing.
      */
-    private Object convertJsonNodeToOrgJson(JsonNode node) {
-        if (node == null || node.isNull()) {
-            return org.json.JSONObject.NULL;
+    private Object parseBodyRaw(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return new org.json.JSONObject();
         }
-
         try {
-            if (node.isObject()) {
-                return new org.json.JSONObject(OBJECT_MAPPER.convertValue(node, java.util.Map.class));
-            } else if (node.isArray()) {
-                return new org.json.JSONArray(OBJECT_MAPPER.convertValue(node, java.util.List.class));
-            } else if (node.isBoolean()) {
-                return node.asBoolean();
-            } else if (node.isNumber()) {
-                return node.numberValue();
-            } else if (node.isTextual()) {
-                return node.asText();
-            } else {
-                return new org.json.JSONObject(OBJECT_MAPPER.convertValue(node, java.util.Map.class));
-            }
+            return new org.json.JSONTokener(raw).nextValue();
         } catch (Exception e) {
-            log.warn("[TREBLLE]: Failed to convert JsonNode to org.json type: " + e.getMessage() + ". Using empty object as fallback.");
+            log.debug("[TREBLLE]: Could not parse body as JSON: " + e.getMessage());
             return new org.json.JSONObject();
         }
     }

@@ -693,15 +693,13 @@ public class APILogHandler extends AbstractHandler {
     }
 
     private String getRoutePath(MessageContext messageContext) {
-        // List of property names to try, in order of preference
+        // API_ELECTED_RESOURCE is the canonical property for the route template (e.g. /users/{id}).
+        // REST_URL_PATTERN is a fallback for older WSO2 versions that use a different name.
+        // Other candidates (api.ut.resource, REST_SUB_REQUEST_PATH) return the actual resolved
+        // URL path, not the template, and would corrupt route_path on parameterized routes.
         String[] propertyNames = {
-            "API_ELECTED_RESOURCE",      // Primary property for API resource template
-            "REST_URL_PATTERN",           // Alternative property name
-            "API_RESOURCE_CACHE_KEY",     // Cache key that may contain resource info
-            "api.ut.resource",            // URI template resource property
-            "SYNAPSE_REST_API_RESOURCE",  // Synapse REST API resource
-            "REST_SUB_REQUEST_PATH",      // Sub-request path (may be template)
-            "API_RESOURCE_PATTERN"        // Resource pattern property
+            "API_ELECTED_RESOURCE",
+            "REST_URL_PATTERN"
         };
 
         // Try each property name in sequence
@@ -740,20 +738,25 @@ public class APILogHandler extends AbstractHandler {
      * @return the API name or null if not found
      */
     private String getApiName(MessageContext messageContext) {
-        try {
-            Object propertyValue = messageContext.getProperty("api.ut.api");
-            if (propertyValue != null) {
-                String apiName = propertyValue.toString();
-                if (!apiName.isEmpty()) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Treblle: Found API name using property 'api.ut.api': " + apiName);
+        // API_NAME is the direct WSO2 property; api.ut.api is the analytics-layer equivalent.
+        String[] propertyNames = { "API_NAME", "api.ut.api" };
+        for (String propertyName : propertyNames) {
+            try {
+                Object propertyValue = messageContext.getProperty(propertyName);
+                if (propertyValue != null) {
+                    String apiName = propertyValue.toString();
+                    if (!apiName.isEmpty()) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("Treblle: Found API name using property '" + propertyName + "': " + apiName);
+                        }
+                        return apiName;
                     }
-                    return apiName;
                 }
+            } catch (Exception e) {
+                log.warn("Treblle: Error reading property '" + propertyName + "': " + e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("Treblle: Error reading property 'api.ut.api': " + e.getMessage());
         }
+        log.warn("Treblle: Unable to determine API name. The 'internal_name' field will be null.");
         return null;
     }
 
@@ -766,15 +769,13 @@ public class APILogHandler extends AbstractHandler {
      * @return the API UUID or null if not found
      */
     private String getApiUuid(MessageContext messageContext) {
-        // List of property names to try, in order of preference
+        // API_UUID is the confirmed working property on WSO2 4.x. api.uuid and __api.uuid
+        // are kept as fallbacks for older versions. Candidates like API_IDENTIFIER return
+        // an object whose toString() is not a bare UUID string.
         String[] propertyNames = {
-            "API_UUID",                // Primary property for API UUID
-            "api.uuid",                // Alternative property name
-            "__api.uuid",              // Internal property with double underscore prefix
-            "API_IDENTIFIER",          // API Identifier object (may contain UUID)
-            "ELECTED_API_UUID",        // Elected API UUID
-            "org.wso2.carbon.apimgt.gateway.handlers.api.uuid",  // Fully qualified property
-            "apiUUID"                  // CamelCase variant
+            "API_UUID",
+            "api.uuid",
+            "__api.uuid"
         };
 
         // Try each property name in sequence

@@ -313,7 +313,7 @@ public class APILogHandlerTest {
         System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super");
 
         // Clear the cache before test
-        Field cacheField = APILogHandler.class.getDeclaredField("apiMaskKeywordsCache");
+        Field cacheField = APILogHandler.class.getDeclaredField("apiConfigCache");
         cacheField.setAccessible(true);
         ((Cache<?, ?>) cacheField.get(null)).invalidateAll();
 
@@ -335,10 +335,9 @@ public class APILogHandlerTest {
     public void testPerApiMaskKeywordsCaching() throws Exception {
 
         // Clear the cache before test
-        Field cacheField = APILogHandler.class.getDeclaredField("apiMaskKeywordsCache");
+        Field cacheField = APILogHandler.class.getDeclaredField("apiConfigCache");
         cacheField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Cache<String, List<String>> cache = (Cache<String, List<String>>) cacheField.get(null);
+        Cache<String, ?> cache = (Cache<String, ?>) cacheField.get(null);
         cache.invalidateAll();
 
         SynapseConfiguration synCfg = new SynapseConfiguration();
@@ -366,7 +365,6 @@ public class APILogHandlerTest {
 
         // Verify cache was populated
         Assert.assertNotNull(cache.getIfPresent("cache-test-uuid"));
-        Assert.assertEquals(2, cache.getIfPresent("cache-test-uuid").size());
 
         // Second request: same API UUID but WITHOUT the property — should use cache
         org.apache.axis2.context.MessageContext axisMsgCtx2 = new org.apache.axis2.context.MessageContext();

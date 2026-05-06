@@ -33,6 +33,7 @@ public class PublisherClient {
     private static final String[] MASK_KEYWORDS = {
             "password", "pwd", "secret", "password_confirmation", "cc", "card_number", "ccv", "ssn", "credit_score"};
     private final List<String> maskKeywordsList;
+    private final Set<String> globalMaskKeywordsSet; // pre-built, lowercased, immutable
 
     // Pooled HTTP client for connection reuse
     private final CloseableHttpClient httpClient;
@@ -70,6 +71,12 @@ public class PublisherClient {
             }
         }
         this.maskKeywordsList = java.util.Collections.unmodifiableList(keywords);
+
+        Set<String> globalSet = new HashSet<>(keywords.size() * 2);
+        for (String kw : keywords) {
+            globalSet.add(kw.toLowerCase());
+        }
+        this.globalMaskKeywordsSet = java.util.Collections.unmodifiableSet(globalSet);
 
         String envGatewayUrl = System.getenv("TREBLLE_GATEWAY_URL");
         this.customGatewayUrl = (envGatewayUrl != null && !envGatewayUrl.trim().isEmpty())
@@ -241,16 +248,17 @@ public class PublisherClient {
         data.put("server", new org.json.JSONObject(trebllePayload.getData().getServer()));
         data.put("errors", new org.json.JSONArray(trebllePayload.getData().getErrors()));
 
-        // Build a single lowercase keyword set (global + per-API) for one-pass masking
-        Set<String> keywordsToMask = new HashSet<>();
-        for (String kw : maskKeywordsList) {
-            keywordsToMask.add(kw.toLowerCase());
-        }
+        // Build the keyword set: reuse the pre-built global set when no per-API keywords,
+        // otherwise copy it and add per-API additions to avoid mutating the shared set.
         List<String> perApiKeywords = trebllePayload.getPerApiMaskKeywords();
+        Set<String> keywordsToMask;
         if (perApiKeywords != null && !perApiKeywords.isEmpty()) {
+            keywordsToMask = new HashSet<>(globalMaskKeywordsSet);
             for (String kw : perApiKeywords) {
                 keywordsToMask.add(kw.toLowerCase());
             }
+        } else {
+            keywordsToMask = globalMaskKeywordsSet;
         }
         maskKeywordInJson(data, keywordsToMask);
 
@@ -281,13 +289,27 @@ public class PublisherClient {
      */
     private void maskKeywordInJson(org.json.JSONObject jsonObject, Set<String> keywords) {
         for (Object key : jsonObject.keySet()) {
-            if (keywords.contains(key.toString().toLowerCase())) {
-                jsonObject.put(key.toString(), "****");
+            String keyStr = key.toString();
+            if (keywords.contains(keyStr.toLowerCase())) {
+                jsonObject.put(keyStr, "****");
             } else {
-                Object value = jsonObject.get(key.toString());
+                Object value = jsonObject.get(keyStr);
                 if (value instanceof org.json.JSONObject) {
                     maskKeywordInJson((org.json.JSONObject) value, keywords);
+                } else if (value instanceof org.json.JSONArray) {
+                    maskKeywordInArray((org.json.JSONArray) value, keywords);
                 }
+            }
+        }
+    }
+
+    private void maskKeywordInArray(org.json.JSONArray array, Set<String> keywords) {
+        for (int i = 0; i < array.length(); i++) {
+            Object item = array.get(i);
+            if (item instanceof org.json.JSONObject) {
+                maskKeywordInJson((org.json.JSONObject) item, keywords);
+            } else if (item instanceof org.json.JSONArray) {
+                maskKeywordInArray((org.json.JSONArray) item, keywords);
             }
         }
     }

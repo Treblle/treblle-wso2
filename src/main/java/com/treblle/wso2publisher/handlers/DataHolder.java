@@ -9,6 +9,7 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -22,7 +23,7 @@ public class DataHolder {
     public static final int DEFAULT_QUEUE_SIZE = 20000;
     public static final int DEFAULT_WORKER_THREADS = 4;
     public String gatewayURL;
-    Map<String, String> enabledTenantDomains = new HashMap<>();
+    private volatile Map<String, String> enabledTenantDomains = Collections.emptyMap();
     private static final String TENANT_DOMAINS = "TREBLLE_ENABLED_TENANT_DOMAINS";
     private static final String TREBLLE_QUEUE_SIZE = "TREBLLE_QUEUE_SIZE";
     private static final String TREBLLE_WORKER_THREADS = "TREBLLE_WORKER_THREADS";
@@ -69,11 +70,11 @@ public class DataHolder {
 
         String tenantDomains = System.getProperty(TENANT_DOMAINS, System.getenv(TENANT_DOMAINS));
         if (tenantDomains != null) {
-            String[] tenantDomainArray = tenantDomains.split(",");
-
-            for (String tenantDomain : tenantDomainArray) {
-                enabledTenantDomains.put(tenantDomain.trim(), tenantDomain.trim());
+            Map<String, String> tenantMap = new HashMap<>();
+            for (String tenantDomain : tenantDomains.split(",")) {
+                tenantMap.put(tenantDomain.trim(), tenantDomain.trim());
             }
+            enabledTenantDomains = Collections.unmodifiableMap(tenantMap);
         }
 
         // Initialize pooled HTTP client for efficient connection reuse
@@ -127,14 +128,14 @@ public class DataHolder {
      * Primarily used for testing purposes.
      */
     public void reloadEnabledTenantDomains() {
-        enabledTenantDomains.clear();
         String tenantDomains = System.getProperty(TENANT_DOMAINS, System.getenv(TENANT_DOMAINS));
+        Map<String, String> newMap = new HashMap<>();
         if (tenantDomains != null) {
-            String[] tenantDomainArray = tenantDomains.split(",");
-            for (String tenantDomain : tenantDomainArray) {
-                enabledTenantDomains.put(tenantDomain.trim(), tenantDomain.trim());
+            for (String tenantDomain : tenantDomains.split(",")) {
+                newMap.put(tenantDomain.trim(), tenantDomain.trim());
             }
         }
+        this.enabledTenantDomains = newMap.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(newMap);
         log.debug("[TREBLLE]: Reloaded Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
     }
 

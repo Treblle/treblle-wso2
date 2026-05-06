@@ -12,6 +12,7 @@ import org.junit.Test;
 import com.treblle.wso2publisher.dto.TrebllePayload;
 import com.treblle.wso2publisher.handlers.DataHolder;
 
+import com.google.common.cache.Cache;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -312,7 +313,7 @@ public class APILogHandlerTest {
         // Clear the cache before test
         Field cacheField = APILogHandler.class.getDeclaredField("apiMaskKeywordsCache");
         cacheField.setAccessible(true);
-        ((Map<?, ?>) cacheField.get(null)).clear();
+        ((Cache<?, ?>) cacheField.get(null)).invalidateAll();
 
         APILogHandler apiLogHandler = new APILogHandler();
         boolean result = apiLogHandler.handleRequest(synCtx);
@@ -335,8 +336,8 @@ public class APILogHandlerTest {
         Field cacheField = APILogHandler.class.getDeclaredField("apiMaskKeywordsCache");
         cacheField.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Map<String, List<String>> cache = (Map<String, List<String>>) cacheField.get(null);
-        cache.clear();
+        Cache<String, List<String>> cache = (Cache<String, List<String>>) cacheField.get(null);
+        cache.invalidateAll();
 
         SynapseConfiguration synCfg = new SynapseConfiguration();
         AxisConfiguration axisConfig = new AxisConfiguration();
@@ -362,8 +363,8 @@ public class APILogHandlerTest {
         apiLogHandler.handleRequest(synCtx1);
 
         // Verify cache was populated
-        Assert.assertTrue(cache.containsKey("cache-test-uuid"));
-        Assert.assertEquals(2, cache.get("cache-test-uuid").size());
+        Assert.assertNotNull(cache.getIfPresent("cache-test-uuid"));
+        Assert.assertEquals(2, cache.getIfPresent("cache-test-uuid").size());
 
         // Second request: same API UUID but WITHOUT the property — should use cache
         org.apache.axis2.context.MessageContext axisMsgCtx2 = new org.apache.axis2.context.MessageContext();

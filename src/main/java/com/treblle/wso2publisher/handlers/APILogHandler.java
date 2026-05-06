@@ -4,15 +4,22 @@ import java.net.InetAddress;
 import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
+import java.util.concurrent.TimeUnit;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.treblle.wso2publisher.commons.PropertyUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.apache.synapse.MessageContext;
 import org.apache.synapse.commons.json.JsonUtil;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
 import org.apache.synapse.rest.AbstractHandler;
 import org.apache.synapse.transport.passthru.util.RelayUtils;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.wso2.carbon.apimgt.gateway.APIMgtGatewayConstants;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -35,6 +42,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class APILogHandler extends AbstractHandler {
+
+    private Properties additionalProperties = new Properties();
 
     private static final String HEADER_X_FORWARDED_FOR = "X-FORWARDED-FOR";
     private static final String TREBLLE_REQ_HEADERS = "TREBLLE_REQ_HEADERS";
@@ -67,19 +76,38 @@ public class APILogHandler extends AbstractHandler {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MASK_KEYWORDS_CACHE_MAX_SIZE = 1000;
-    private static final Map<String, List<String>> apiMaskKeywordsCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Cache<String, List<String>> apiMaskKeywordsCache = CacheBuilder.newBuilder()
+        .maximumSize(MASK_KEYWORDS_CACHE_MAX_SIZE)
+        .expireAfterWrite(60, TimeUnit.MINUTES)
+        .build();
     private static final int DISABLE_BODY_CACHE_MAX_SIZE = 1000;
-    private static final Map<String, Boolean> apiDisableResponseBodyCache = java.util.Collections.synchronizedMap(
-        new java.util.LinkedHashMap<String, Boolean>(DISABLE_BODY_CACHE_MAX_SIZE, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(java.util.Map.Entry<String, Boolean> eldest) {
-                return size() > DISABLE_BODY_CACHE_MAX_SIZE;
-            }
-        }
-    );
+    private static final Cache<String, Boolean> apiDisableResponseBodyCache = CacheBuilder.newBuilder()
+        .maximumSize(DISABLE_BODY_CACHE_MAX_SIZE)
+        .expireAfterWrite(60, TimeUnit.MINUTES)
+        .build();
     private static String serverIP;
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
+
+    protected Properties getAdditionalProperties() {
+        return additionalProperties;
+    }
+
+    public void setAdditionalProperties(String additionalPropertiesJsonXmlEscaped) {
+        if (log.isDebugEnabled()) {
+            log.debug("[TREBLLE]:setAdditionalProperties(" + additionalPropertiesJsonXmlEscaped + ")");
+        }
+        this.additionalProperties.clear();
+        if (additionalPropertiesJsonXmlEscaped != null && !additionalPropertiesJsonXmlEscaped.trim().isEmpty()) {
+            String additionalPropertiesJson = StringEscapeUtils.unescapeXml(additionalPropertiesJsonXmlEscaped);
+            try {
+                JSONObject jsonObject = new JSONObject(additionalPropertiesJson);
+                this.additionalProperties.putAll(PropertyUtils.toProperties(jsonObject));
+            } catch (JSONException e) {
+                log.warn("[TREBLLE]:Unable to parse additionalProperties JSON - " + e.getMessage());
+            }
+        }
+    }
 
     @Override
     public boolean handleRequest(MessageContext messageContext) {
@@ -87,11 +115,6 @@ public class APILogHandler extends AbstractHandler {
         try {
             if (!isEnabledTenantDomain(messageContext)) {
                 return true;
-            }
-
-            // Log all MessageContext properties in debug mode for troubleshooting
-            if (log.isDebugEnabled()) {
-                logAllMessageContextProperties(messageContext);
             }
 
             // Get the Axis2 message context from the Synapse message context
@@ -826,7 +849,7 @@ public class APILogHandler extends AbstractHandler {
     private List<String> getPerApiMaskKeywords(MessageContext messageContext, String apiUuid) {
         // Check cache first if we have an API UUID
         if (apiUuid != null) {
-            List<String> cached = apiMaskKeywordsCache.get(apiUuid);
+            List<String> cached = apiMaskKeywordsCache.getIfPresent(apiUuid);
             if (cached != null) {
                 if (log.isDebugEnabled()) {
                     log.debug("[TREBLLE]:Per-API mask keywords cache hit for API " + apiUuid);
@@ -846,21 +869,18 @@ public class APILogHandler extends AbstractHandler {
             }
         }
 
-        // Try additionalProperties map
+        // Try handler-level additionalProperties injected via velocity template setter (works on distributed gateways)
         if (maskKeywordsValue == null) {
-            Object additionalProps = messageContext.getProperty("additionalProperties");
-            if (additionalProps instanceof Map) {
-                Object value = ((Map<String, Object>) additionalProps).get("treblle_mask_keywords");
-                if (value instanceof String && !((String) value).isEmpty()) {
-                    maskKeywordsValue = (String) value;
-                    if (log.isDebugEnabled()) {
-                        log.debug("[TREBLLE]:Found per-API mask keywords from 'additionalProperties': " + maskKeywordsValue);
-                    }
+            String value = getAdditionalProperties().getProperty("treblle_mask_keywords");
+            if (value != null && !value.isEmpty()) {
+                maskKeywordsValue = value;
+                if (log.isDebugEnabled()) {
+                    log.debug("[TREBLLE]:Found per-API mask keywords from handler additionalProperties: " + maskKeywordsValue);
                 }
             }
         }
 
-        // Try api.ut.additionalProperties map
+        // Try api.ut.additionalProperties map (fallback for some WSO2 versions)
         if (maskKeywordsValue == null) {
             Object utAdditionalProps = messageContext.getProperty("api.ut.additionalProperties");
             if (utAdditionalProps instanceof Map) {
@@ -887,9 +907,7 @@ public class APILogHandler extends AbstractHandler {
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
 
-        // Cache by API UUID if available (size-bounded to avoid unbounded growth)
-        if (apiUuid != null && !keywords.isEmpty()
-                && apiMaskKeywordsCache.size() < MASK_KEYWORDS_CACHE_MAX_SIZE) {
+        if (apiUuid != null && !keywords.isEmpty()) {
             apiMaskKeywordsCache.put(apiUuid, keywords);
         }
 
@@ -909,7 +927,7 @@ public class APILogHandler extends AbstractHandler {
     private boolean getDisableResponseBody(MessageContext messageContext, String apiUuid) {
         // Check cache first if we have an API UUID
         if (apiUuid != null) {
-            Boolean cached = apiDisableResponseBodyCache.get(apiUuid);
+            Boolean cached = apiDisableResponseBodyCache.getIfPresent(apiUuid);
             if (cached != null) {
                 if (log.isDebugEnabled()) {
                     log.debug("[TREBLLE]:Disable response body cache hit for API " + apiUuid + ": " + cached);
@@ -929,21 +947,18 @@ public class APILogHandler extends AbstractHandler {
             }
         }
 
-        // Try additionalProperties map
+        // Try handler-level additionalProperties injected via velocity template setter (works on distributed gateways)
         if (flagValue == null) {
-            Object additionalProps = messageContext.getProperty("additionalProperties");
-            if (additionalProps instanceof Map) {
-                Object value = ((Map<String, Object>) additionalProps).get("treblle_disable_response_body");
-                if (value instanceof String && !((String) value).isEmpty()) {
-                    flagValue = (String) value;
-                    if (log.isDebugEnabled()) {
-                        log.debug("[TREBLLE]:Found disable response body from 'additionalProperties': " + flagValue);
-                    }
+            String value = getAdditionalProperties().getProperty("treblle_disable_response_body");
+            if (value != null && !value.isEmpty()) {
+                flagValue = value;
+                if (log.isDebugEnabled()) {
+                    log.debug("[TREBLLE]:Found disable response body from handler additionalProperties: " + flagValue);
                 }
             }
         }
 
-        // Try api.ut.additionalProperties map
+        // Try api.ut.additionalProperties map (fallback for some WSO2 versions)
         if (flagValue == null) {
             Object utAdditionalProps = messageContext.getProperty("api.ut.additionalProperties");
             if (utAdditionalProps instanceof Map) {
@@ -959,7 +974,6 @@ public class APILogHandler extends AbstractHandler {
 
         boolean result = "true".equalsIgnoreCase(flagValue);
 
-        // Cache by API UUID if available
         if (apiUuid != null) {
             apiDisableResponseBodyCache.put(apiUuid, result);
         }
@@ -1085,106 +1099,6 @@ public class APILogHandler extends AbstractHandler {
 
         } catch (Exception e) {
             log.error("[TREBLLE]:Error logging available properties: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Log ALL available properties in MessageContext for comprehensive debugging.
-     * This method logs every single property from both Synapse and Axis2 MessageContext
-     * to help developers understand what data is available in their WSO2 environment.
-     * Only runs when log.isDebugEnabled() is true.
-     *
-     * @param messageContext the Synapse message context
-     */
-    private void logAllMessageContextProperties(MessageContext messageContext) {
-        log.debug("[TREBLLE]: ==================== DEBUG: ALL MESSAGE CONTEXT PROPERTIES ====================");
-
-        try {
-            // Log Synapse MessageContext properties
-            log.debug("[TREBLLE]: --- Synapse MessageContext Properties ---");
-            java.util.Set<String> propertyKeys = messageContext.getPropertyKeySet();
-
-            if (propertyKeys == null || propertyKeys.isEmpty()) {
-                log.debug("[TREBLLE]:   (No properties found in Synapse MessageContext)");
-            } else {
-                log.debug("[TREBLLE]:   Total Synapse properties: " + propertyKeys.size());
-                java.util.List<String> sortedKeys = new java.util.ArrayList<>(propertyKeys);
-                java.util.Collections.sort(sortedKeys);
-
-                for (String key : sortedKeys) {
-                    try {
-                        Object value = messageContext.getProperty(key);
-                        String valueStr;
-
-                        if (value == null) {
-                            valueStr = "null";
-                        } else if (value instanceof Map) {
-                            valueStr = "[Map with " + ((Map<?, ?>) value).size() + " entries] " + value.getClass().getName();
-                        } else if (value instanceof java.util.Collection) {
-                            valueStr = "[Collection with " + ((java.util.Collection<?>) value).size() + " items] " + value.getClass().getName();
-                        } else {
-                            valueStr = String.valueOf(value);
-                            // Truncate very long values
-                            if (valueStr.length() > 200) {
-                                valueStr = valueStr.substring(0, 200) + "... [truncated, total length: " + valueStr.length() + "]";
-                            }
-                        }
-
-                        log.debug("[TREBLLE]:   [Synapse] " + key + " = " + valueStr + " (type: " + value.getClass().getName() + ")");
-                    } catch (Exception e) {
-                        log.debug("[TREBLLE]:   [Synapse] " + key + " = <error reading value: " + e.getMessage() + ">");
-                    }
-                }
-            }
-
-            // Log Axis2 MessageContext properties
-            org.apache.axis2.context.MessageContext axis2MsgContext =
-                ((Axis2MessageContext) messageContext).getAxis2MessageContext();
-
-            log.debug("[TREBLLE]: --- Axis2 MessageContext Properties ---");
-            java.util.Iterator<?> propertyNames = axis2MsgContext.getPropertyNames();
-
-            if (!propertyNames.hasNext()) {
-                log.debug("[TREBLLE]:   (No properties found in Axis2 MessageContext)");
-            } else {
-                java.util.List<String> axis2Keys = new java.util.ArrayList<>();
-                while (propertyNames.hasNext()) {
-                    axis2Keys.add(String.valueOf(propertyNames.next()));
-                }
-                java.util.Collections.sort(axis2Keys);
-
-                log.debug("[TREBLLE]:   Total Axis2 properties: " + axis2Keys.size());
-
-                for (String key : axis2Keys) {
-                    try {
-                        Object value = axis2MsgContext.getProperty(key);
-                        String valueStr;
-
-                        if (value == null) {
-                            valueStr = "null";
-                        } else if (value instanceof Map) {
-                            valueStr = "[Map with " + ((Map<?, ?>) value).size() + " entries] " + value.getClass().getName();
-                        } else if (value instanceof java.util.Collection) {
-                            valueStr = "[Collection with " + ((java.util.Collection<?>) value).size() + " items] " + value.getClass().getName();
-                        } else {
-                            valueStr = String.valueOf(value);
-                            // Truncate very long values
-                            if (valueStr.length() > 200) {
-                                valueStr = valueStr.substring(0, 200) + "... [truncated, total length: " + valueStr.length() + "]";
-                            }
-                        }
-
-                        log.debug("[TREBLLE]:   [Axis2] " + key + " = " + valueStr + " (type: " + value.getClass().getName() + ")");
-                    } catch (Exception e) {
-                        log.debug("[TREBLLE]:   [Axis2] " + key + " = <error reading value: " + e.getMessage() + ">");
-                    }
-                }
-            }
-
-            log.debug("[TREBLLE]: ==================== END DEBUG ====================");
-
-        } catch (Exception e) {
-            log.error("[TREBLLE]:Error logging all MessageContext properties: " + e.getMessage(), e);
         }
     }
 

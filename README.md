@@ -1,7 +1,5 @@
 # Treblle - API Intelligence Platform
 
-[![Treblle API Intelligence](https://github.com/user-attachments/assets/b268ae9e-7c8a-4ade-95da-b4ac6fce6eea)](https://treblle.com)
-
 [Website](http://treblle.com/) • [Documentation](https://docs.treblle.com/) • [Pricing](https://treblle.com/pricing)
 
 Treblle is an API intelligence platfom that helps developers, teams and organizations understand their APIs from a single integration point.

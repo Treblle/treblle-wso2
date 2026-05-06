@@ -6,8 +6,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.treblle.wso2publisher.handlers</groupId>
-    <artifactId>treblle-data-publisher</artifactId>
-    <version>1.0.0</version>
+    <artifactId>treblle-wso2</artifactId>
+    <version>3.0.0</version>
     <packaging>bundle</packaging>
 
     <name>Custom API Log Handler</name>
@@ -160,8 +160,8 @@
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
-                        <Bundle-SymbolicName>treblle-data-publisher</Bundle-SymbolicName>
-                        <Bundle-Name>treblle-data-publisher</Bundle-Name>
+                        <Bundle-SymbolicName>treblle-wso2</Bundle-SymbolicName>
+                        <Bundle-Name>treblle-wso2</Bundle-Name>
                         <Export-Package>
                             com.treblle.wso2publisher.*,
                         </Export-Package>
@@ -194,7 +194,7 @@
                 <wso2.version.suffix>4.0.x</wso2.version.suffix>
             </properties>
             <build>
-                <finalName>treblle-data-publisher-4.0.x-${project.version}</finalName>
+                <finalName>treblle-wso2-${project.version}</finalName>
             </build>
         </profile>
 
@@ -207,7 +207,7 @@
                 <wso2.version.suffix>4.1.x</wso2.version.suffix>
             </properties>
             <build>
-                <finalName>treblle-data-publisher-4.1.x-${project.version}</finalName>
+                <finalName>treblle-wso2-${project.version}</finalName>
             </build>
         </profile>
 
@@ -220,7 +220,7 @@
                 <wso2.version.suffix>4.2.x</wso2.version.suffix>
             </properties>
             <build>
-                <finalName>treblle-data-publisher-4.2.x-${project.version}</finalName>
+                <finalName>treblle-wso2-${project.version}</finalName>
             </build>
         </profile>
 
@@ -236,7 +236,7 @@
                 <wso2.version.suffix>4.3.x</wso2.version.suffix>
             </properties>
             <build>
-                <finalName>treblle-data-publisher-4.3.x-${project.version}</finalName>
+                <finalName>treblle-wso2-${project.version}</finalName>
             </build>
         </profile>
 
@@ -249,7 +249,7 @@
                 <wso2.version.suffix>4.4.x</wso2.version.suffix>
             </properties>
             <build>
-                <finalName>treblle-data-publisher-4.4.x-${project.version}</finalName>
+                <finalName>treblle-wso2-${project.version}</finalName>
             </build>
         </profile>
     </profiles>

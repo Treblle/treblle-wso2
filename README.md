@@ -244,6 +244,20 @@ You can prevent the response body from being sent to Treblle on a per-API basis.
 
 When enabled, the response body is replaced with an empty JSON object (`{}`) and the response size is set to `0` before sending to Treblle. The response body field is always present in the payload (never omitted). This setting is cached by API UUID for performance.
 
+### Per-API Configuration Cache
+
+Both `treblle_mask_keywords` and `treblle_disable_response_body` are resolved once per API and cached in memory to avoid re-parsing MessageContext properties on every request.
+
+| Property | Value |
+|----------|-------|
+| Cache key | API UUID |
+| TTL | 5 minutes (write-based expiry) |
+| Max entries | 1000 APIs |
+
+**What this means in practice:** after you update a custom property on an API in the WSO2 Publisher portal and redeploy, the change will take effect within 5 minutes as the old cache entry expires. No gateway restart is required.
+
+If an API UUID is not available in the MessageContext, caching is skipped and the properties are resolved fresh on every request.
+
 ### Custom Endpoint Configuration
 
 **Load Balancing (Default):**

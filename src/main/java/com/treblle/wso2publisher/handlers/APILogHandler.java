@@ -86,7 +86,7 @@ public class APILogHandler extends AbstractHandler {
     private static final int API_CONFIG_CACHE_MAX_SIZE = 1000;
     private static final Cache<String, PerApiConfig> apiConfigCache = CacheBuilder.newBuilder()
         .maximumSize(API_CONFIG_CACHE_MAX_SIZE)
-        .expireAfterWrite(60, TimeUnit.MINUTES)
+        .expireAfterWrite(5, TimeUnit.MINUTES)
         .build();
     private static volatile String serverIP;
 

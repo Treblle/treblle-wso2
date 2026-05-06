@@ -1,5 +1,6 @@
 package com.treblle.wso2publisher.dto;
 
+import java.util.Collections;
 import java.util.List;
 
 public class Data {
@@ -8,7 +9,8 @@ public class Data {
   private Language language;
   private Request request;
   private Response response;
-  private List<RuntimeError> errors;
+  private Metadata metadata;
+  private List<RuntimeError> errors = Collections.emptyList();
 
   public Server getServer() {
     return server;
@@ -40,6 +42,14 @@ public class Data {
 
   public void setResponse(Response response) {
     this.response = response;
+  }
+
+  public Metadata getMetadata() {
+    return metadata;
+  }
+
+  public void setMetadata(Metadata metadata) {
+    this.metadata = metadata;
   }
 
   public List<RuntimeError> getErrors() {

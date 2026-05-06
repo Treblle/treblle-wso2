@@ -45,15 +45,15 @@ public class ParallelQueueWorker implements Runnable {
             } catch (InterruptedException e) {
                 // Handle the InterruptedException and interrupt the thread
                 Thread.currentThread().interrupt();
-                log.info("Treblle worker thread interrupted, shutting down gracefully");
+                log.info("[TREBLLE]: Worker thread interrupted, shutting down gracefully");
                 break; // Exit the loop to allow graceful shutdown
             } catch (Exception e) {
                 // Handle general exceptions and log the error - never crash the worker thread
-                log.error("Treblle event sending failed. Event will be dropped", e);
+                log.error("[TREBLLE]: Event sending failed. Event will be dropped", e);
             }
         }
 
-        log.info("Treblle worker thread shutdown complete");
+        log.info("[TREBLLE]: Worker thread shutdown complete");
     }
 
 }

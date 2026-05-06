@@ -10,19 +10,24 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import com.treblle.wso2publisher.dto.TrebllePayload;
+import com.treblle.wso2publisher.handlers.DataHolder;
 
+import com.google.common.cache.Cache;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static junit.framework.Assert.assertNotNull;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class APILogHandlerTest {
 
     @Test
-    public void handleRequestOutFlowTest() throws Exception {
+    public void handleRequestTest() throws Exception {
 
         SynapseConfiguration synCfg = new SynapseConfiguration();
         org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
@@ -30,14 +35,33 @@ public class APILogHandlerTest {
         ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
         MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
                 new Axis2SynapseEnvironment(cfgCtx, synCfg));
-        synCtx.setProperty("SYNAPSE_REST_API", "mock-v1");
+        synCtx.setProperty("api.ut.api", "mock-v1");
+        synCtx.setProperty("tenant.info.domain", "carbon.super");
+
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+        headers.put("X-FORWARDED-FOR", "0:0:0:0:0:0:0:1");
+        axisMsgCtx.setProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS, headers);
+        axisMsgCtx.setProperty("REST_URL_POSTFIX", "/test");
+        axisMsgCtx.setProperty("HTTP_METHOD", "POST");
+        System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super,abc.com");
 
         APILogHandler apiLogHandler = new APILogHandler();
-        boolean response = apiLogHandler.handleRequestOutFlow(synCtx);
+        boolean response = apiLogHandler.handleRequest(synCtx);
         Assert.assertTrue(response);
 
+        // Verify request data captured
+        Assert.assertEquals(headers, synCtx.getProperty("TREBLLE_REQ_HEADERS"));
+        // TREBLLE_REQ_BODY is a raw JSON String (may be null when no body is present)
+        Object reqBody = synCtx.getProperty("TREBLLE_REQ_BODY");
+        Assert.assertTrue(reqBody == null || reqBody instanceof String);
+        Assert.assertEquals("/test", synCtx.getProperty("TREBLLE_REQ_PATH"));
+        Assert.assertEquals("0:0:0:0:0:0:0:1", synCtx.getProperty("TREBLLE_REQ_IP"));
+        Assert.assertEquals("POST", synCtx.getProperty("TREBLLE_REQ_METHOD"));
+
+        // Verify API name captured (previously in handleRequestOutFlow)
         String apiName = (String) synCtx.getProperty("TREBLLE_API_NAME");
-        Assert.assertEquals(apiName, "mock-v1");
+        Assert.assertEquals("mock-v1", apiName);
     }
 
     @Test
@@ -80,40 +104,6 @@ public class APILogHandlerTest {
         // Assert the expected results
         Assert.assertNotNull(resultHeaders);
         Assert.assertEquals("application/json", resultHeaders.get("Content-Type"));
-    }
-
-     @Test
-    public void testHandleRequestInFlow() throws Exception {
-        // Set up the mock behavior
-        SynapseConfiguration synCfg = new SynapseConfiguration();
-        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
-        AxisConfiguration axisConfig = new AxisConfiguration();
-        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
-        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
-                new Axis2SynapseEnvironment(cfgCtx, synCfg));
-        synCtx.setProperty("tenant.info.domain", "carbon.super");
-
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Content-Type", "application/json");
-        headers.put("X-FORWARDED-FOR", "0:0:0:0:0:0:0:1");
-        axisMsgCtx.setProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS, headers);
-        axisMsgCtx.setProperty("REST_URL_POSTFIX", "/test");
-        axisMsgCtx.setProperty("HTTP_METHOD", "POST");
-        System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super,abc.com");
-
-        // Create the APILogHandler instance
-        APILogHandler apiLogHandler = new APILogHandler();
-
-        // Invoke the handleRequestInFlow method
-        boolean result = apiLogHandler.handleRequestInFlow(synCtx);
-
-        // Assert the expected results
-        Assert.assertTrue(result);
-        Assert.assertEquals(headers, synCtx.getProperty("TREBLLE_REQ_HEADERS"));
-        Assert.assertNotNull(synCtx.getProperty("TREBLLE_REQ_BODY"));
-        Assert.assertEquals("/test", synCtx.getProperty("TREBLLE_REQ_PATH"));
-        Assert.assertEquals("0:0:0:0:0:0:0:1", synCtx.getProperty("TREBLLE_REQ_IP"));
-        Assert.assertEquals("POST", synCtx.getProperty("TREBLLE_REQ_METHOD"));
     }
 
     @Test
@@ -186,7 +176,47 @@ public class APILogHandlerTest {
         assertNotNull(trebllePayload);
     }
 
-      @Test
+    @Test
+    public void testCreatePayloadWithEnrichedProperties() throws Exception {
+
+        // Set up the mock behavior
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+
+        // Set enriched properties that would be available after APIAuthenticationHandler
+        synCtx.setProperty("TREBLLE_TENANT_DOMAIN", "carbon.super");
+        synCtx.setProperty("TREBLLE_APP_NAME", "TestApp");
+        synCtx.setProperty("TREBLLE_APP_ID", "app-123");
+        synCtx.setProperty("TREBLLE_USER_ID", "admin@carbon.super");
+        synCtx.setProperty("TREBLLE_API_PUBLISHER", "admin");
+        synCtx.setProperty("TREBLLE_API_UUID", "uuid-456");
+        synCtx.setProperty("TREBLLE_API_NAME", "TestAPI");
+
+        // Create the APILogHandler instance
+        APILogHandler apiLogHandler = new APILogHandler();
+
+        // Invoke the createPayload method
+        Method createPayloadMethod = APILogHandler.class.getDeclaredMethod("createPayload", MessageContext.class,
+                String.class);
+        createPayloadMethod.setAccessible(true);
+        TrebllePayload trebllePayload = (TrebllePayload) createPayloadMethod.invoke(apiLogHandler, synCtx, "https://gateway.example.com");
+
+        // Assert the expected results
+        assertNotNull(trebllePayload);
+        Assert.assertEquals("carbon.super", trebllePayload.getTenantId());
+        Assert.assertEquals("TestApp", trebllePayload.getAppName());
+        Assert.assertEquals("app-123", trebllePayload.getAppId());
+        Assert.assertEquals("admin@carbon.super", trebllePayload.getUserId());
+        Assert.assertEquals("admin", trebllePayload.getApiPublisher());
+        Assert.assertEquals("uuid-456", trebllePayload.getInternalId());
+        Assert.assertEquals("TestAPI", trebllePayload.getInternalName());
+    }
+
+    @Test
     public void testIsEnabledTenantDomain() throws Exception {
 
         // Set up the mock behavior
@@ -200,11 +230,12 @@ public class APILogHandlerTest {
         Thread.sleep(1000);
 
         System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super,abc.com,xyz.com");
+        DataHolder.getInstance().reloadEnabledTenantDomains();
 
         // Create the APILogHandler instance
         APILogHandler apiLogHandler = new APILogHandler();
 
-        // Invoke the createPayload method
+        // Invoke the isEnabledTenantDomain method
         Method isEnabledTenantDomainMethod = APILogHandler.class.getDeclaredMethod("isEnabledTenantDomain",
                 MessageContext.class);
         isEnabledTenantDomainMethod.setAccessible(true);
@@ -218,5 +249,171 @@ public class APILogHandlerTest {
         synCtx.setProperty("tenant.info.domain", "pqr.com");
         isEnabledTenantDomain = (boolean) isEnabledTenantDomainMethod.invoke(apiLogHandler, synCtx);
         assertFalse(isEnabledTenantDomain);
+    }
+
+    @Test
+    public void testHandleRequestCapturesEnrichedProperties() throws Exception {
+
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+
+        // Set up tenant domain and transport headers
+        synCtx.setProperty("tenant.info.domain", "carbon.super");
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+        axisMsgCtx.setProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS, headers);
+        axisMsgCtx.setProperty("HTTP_METHOD", "GET");
+        axisMsgCtx.setProperty("REST_URL_POSTFIX", "/api/test");
+
+        // Set enriched properties that auth handler would populate
+        synCtx.setProperty("APPLICATION_NAME", "MyApp");
+        synCtx.setProperty("APPLICATION_ID", "42");
+        synCtx.setProperty("END_USER_NAME", "testuser@carbon.super");
+        synCtx.setProperty("API_PUBLISHER", "apiadmin");
+
+        System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super");
+
+        APILogHandler apiLogHandler = new APILogHandler();
+        boolean result = apiLogHandler.handleRequest(synCtx);
+        Assert.assertTrue(result);
+
+        // Verify enriched properties were captured
+        Assert.assertEquals("carbon.super", synCtx.getProperty("TREBLLE_TENANT_DOMAIN"));
+        Assert.assertEquals("MyApp", synCtx.getProperty("TREBLLE_APP_NAME"));
+        Assert.assertEquals("42", synCtx.getProperty("TREBLLE_APP_ID"));
+        Assert.assertEquals("testuser@carbon.super", synCtx.getProperty("TREBLLE_USER_ID"));
+        Assert.assertEquals("apiadmin", synCtx.getProperty("TREBLLE_API_PUBLISHER"));
+    }
+
+    @Test
+    public void testPerApiMaskKeywordsFromMessageContext() throws Exception {
+
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+
+        // Set up required properties
+        synCtx.setProperty("tenant.info.domain", "carbon.super");
+        synCtx.setProperty("API_UUID", "test-uuid-123");
+        synCtx.setProperty("treblle_mask_keywords", "ssn,dob,account_number");
+
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+        axisMsgCtx.setProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS, headers);
+        axisMsgCtx.setProperty("HTTP_METHOD", "GET");
+        axisMsgCtx.setProperty("REST_URL_POSTFIX", "/api/test");
+
+        System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super");
+
+        // Clear the cache before test
+        Field cacheField = APILogHandler.class.getDeclaredField("apiConfigCache");
+        cacheField.setAccessible(true);
+        ((Cache<?, ?>) cacheField.get(null)).invalidateAll();
+
+        APILogHandler apiLogHandler = new APILogHandler();
+        boolean result = apiLogHandler.handleRequest(synCtx);
+        Assert.assertTrue(result);
+
+        // Verify per-API mask keywords were captured
+        @SuppressWarnings("unchecked")
+        List<String> keywords = (List<String>) synCtx.getProperty("TREBLLE_PER_API_MASK_KEYWORDS");
+        Assert.assertNotNull(keywords);
+        Assert.assertEquals(3, keywords.size());
+        Assert.assertTrue(keywords.contains("ssn"));
+        Assert.assertTrue(keywords.contains("dob"));
+        Assert.assertTrue(keywords.contains("account_number"));
+    }
+
+    @Test
+    public void testPerApiMaskKeywordsCaching() throws Exception {
+
+        // Clear the cache before test
+        Field cacheField = APILogHandler.class.getDeclaredField("apiConfigCache");
+        cacheField.setAccessible(true);
+        Cache<String, ?> cache = (Cache<String, ?>) cacheField.get(null);
+        cache.invalidateAll();
+
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+
+        // First request: set the keyword property
+        org.apache.axis2.context.MessageContext axisMsgCtx1 = new org.apache.axis2.context.MessageContext();
+        MessageContext synCtx1 = new Axis2MessageContext(axisMsgCtx1, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+        synCtx1.setProperty("tenant.info.domain", "carbon.super");
+        synCtx1.setProperty("API_UUID", "cache-test-uuid");
+        synCtx1.setProperty("treblle_mask_keywords", "field_a,field_b");
+
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+        axisMsgCtx1.setProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS, headers);
+        axisMsgCtx1.setProperty("HTTP_METHOD", "GET");
+        axisMsgCtx1.setProperty("REST_URL_POSTFIX", "/api/test");
+
+        System.setProperty("TREBLLE_ENABLED_TENANT_DOMAINS", "carbon.super");
+
+        APILogHandler apiLogHandler = new APILogHandler();
+        apiLogHandler.handleRequest(synCtx1);
+
+        // Verify cache was populated
+        Assert.assertNotNull(cache.getIfPresent("cache-test-uuid"));
+
+        // Second request: same API UUID but WITHOUT the property — should use cache
+        org.apache.axis2.context.MessageContext axisMsgCtx2 = new org.apache.axis2.context.MessageContext();
+        MessageContext synCtx2 = new Axis2MessageContext(axisMsgCtx2, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+        synCtx2.setProperty("tenant.info.domain", "carbon.super");
+        synCtx2.setProperty("API_UUID", "cache-test-uuid");
+        // Note: NO treblle_mask_keywords property set
+
+        axisMsgCtx2.setProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS, headers);
+        axisMsgCtx2.setProperty("HTTP_METHOD", "GET");
+        axisMsgCtx2.setProperty("REST_URL_POSTFIX", "/api/test");
+
+        apiLogHandler.handleRequest(synCtx2);
+
+        // Verify cached keywords were used
+        @SuppressWarnings("unchecked")
+        List<String> keywords = (List<String>) synCtx2.getProperty("TREBLLE_PER_API_MASK_KEYWORDS");
+        Assert.assertNotNull(keywords);
+        Assert.assertEquals(2, keywords.size());
+        Assert.assertTrue(keywords.contains("field_a"));
+        Assert.assertTrue(keywords.contains("field_b"));
+    }
+
+    @Test
+    public void testPerApiMaskKeywordsOnPayload() throws Exception {
+
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+
+        // Set per-API mask keywords on the MessageContext (as handleRequest would)
+        List<String> keywords = java.util.Arrays.asList("custom_field", "sensitive_data");
+        synCtx.setProperty("TREBLLE_PER_API_MASK_KEYWORDS", keywords);
+
+        APILogHandler apiLogHandler = new APILogHandler();
+
+        Method createPayloadMethod = APILogHandler.class.getDeclaredMethod("createPayload", MessageContext.class,
+                String.class);
+        createPayloadMethod.setAccessible(true);
+        TrebllePayload payload = (TrebllePayload) createPayloadMethod.invoke(apiLogHandler, synCtx, "https://gateway.example.com");
+
+        Assert.assertNotNull(payload);
+        Assert.assertNotNull(payload.getPerApiMaskKeywords());
+        Assert.assertEquals(2, payload.getPerApiMaskKeywords().size());
+        Assert.assertTrue(payload.getPerApiMaskKeywords().contains("custom_field"));
+        Assert.assertTrue(payload.getPerApiMaskKeywords().contains("sensitive_data"));
     }
 }

@@ -9,6 +9,7 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,9 +21,9 @@ public class DataHolder {
     private CloseableHttpClient httpClient;
     private PoolingHttpClientConnectionManager connectionManager;
     public static final int DEFAULT_QUEUE_SIZE = 20000;
-    public static final int DEFAULT_WORKER_THREADS = 1;
+    public static final int DEFAULT_WORKER_THREADS = 4;
     public String gatewayURL;
-    Map<String, String> enabledTenantDomains = new HashMap<>();
+    private volatile Map<String, String> enabledTenantDomains = Collections.emptyMap();
     private static final String TENANT_DOMAINS = "TREBLLE_ENABLED_TENANT_DOMAINS";
     private static final String TREBLLE_QUEUE_SIZE = "TREBLLE_QUEUE_SIZE";
     private static final String TREBLLE_WORKER_THREADS = "TREBLLE_WORKER_THREADS";
@@ -38,8 +39,12 @@ public class DataHolder {
         if (System.getenv(TREBLLE_QUEUE_SIZE) != null) {
             try {
                 queueSize = Integer.parseInt(System.getenv(TREBLLE_QUEUE_SIZE));
+                if (queueSize < 1) {
+                    log.warn("[TREBLLE]: TREBLLE_QUEUE_SIZE must be at least 1. Using default: " + DEFAULT_QUEUE_SIZE);
+                    queueSize = DEFAULT_QUEUE_SIZE;
+                }
             } catch (NumberFormatException e) {
-                log.warn("Invalid TREBLLE_QUEUE_SIZE value. Using default: " + DEFAULT_QUEUE_SIZE, e);
+                log.warn("[TREBLLE]: Invalid TREBLLE_QUEUE_SIZE value. Using default: " + DEFAULT_QUEUE_SIZE, e);
                 queueSize = DEFAULT_QUEUE_SIZE;
             }
         }
@@ -49,11 +54,11 @@ public class DataHolder {
             try {
                 workerThreads = Integer.parseInt(System.getenv(TREBLLE_WORKER_THREADS));
                 if (workerThreads < 1) {
-                    log.warn("TREBLLE_WORKER_THREADS must be at least 1. Using default: " + DEFAULT_WORKER_THREADS);
+                    log.warn("[TREBLLE]: TREBLLE_WORKER_THREADS must be at least 1. Using default: " + DEFAULT_WORKER_THREADS);
                     workerThreads = DEFAULT_WORKER_THREADS;
                 }
             } catch (NumberFormatException e) {
-                log.warn("Invalid TREBLLE_WORKER_THREADS value. Using default: " + DEFAULT_WORKER_THREADS, e);
+                log.warn("[TREBLLE]: Invalid TREBLLE_WORKER_THREADS value. Using default: " + DEFAULT_WORKER_THREADS, e);
                 workerThreads = DEFAULT_WORKER_THREADS;
             }
         }
@@ -65,18 +70,18 @@ public class DataHolder {
 
         String tenantDomains = System.getProperty(TENANT_DOMAINS, System.getenv(TENANT_DOMAINS));
         if (tenantDomains != null) {
-            String[] tenantDomainArray = tenantDomains.split(",");
-
-            for (String tenantDomain : tenantDomainArray) {
-                enabledTenantDomains.put(tenantDomain, tenantDomain);
+            Map<String, String> tenantMap = new HashMap<>();
+            for (String tenantDomain : tenantDomains.split(",")) {
+                tenantMap.put(tenantDomain.trim(), tenantDomain.trim());
             }
+            enabledTenantDomains = Collections.unmodifiableMap(tenantMap);
         }
 
         // Initialize pooled HTTP client for efficient connection reuse
         connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(100);
-        connectionManager.setDefaultMaxPerRoute(20);
-        connectionManager.setValidateAfterInactivity(2000);
+        connectionManager.setDefaultMaxPerRoute(100);
+        connectionManager.setValidateAfterInactivity(30000);
 
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(5000)
@@ -90,12 +95,12 @@ public class DataHolder {
                 .setConnectionManagerShared(false)
                 .build();
 
-        log.debug("Initialized pooled HTTP client with max connections: 100, per route: 20");
+        log.debug("[TREBLLE]: Initialized pooled HTTP client with max connections: 100, per route: 100");
 
         // Initialize the event queue with the specified size, worker threads, and HTTP client
         eventQueue = new EventQueue(queueSize, workerThreads, httpClient);
-        log.debug("DataHolder initialized with queue size: " + queueSize + " and worker threads: " + workerThreads);
-        log.debug("Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
+        log.debug("[TREBLLE]: DataHolder initialized with queue size: " + queueSize + " and worker threads: " + workerThreads);
+        log.debug("[TREBLLE]: Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
     }
 
     public static DataHolder getInstance() {
@@ -119,11 +124,27 @@ public class DataHolder {
     }
 
     /**
+     * Reload enabled tenant domains from system property/environment variable.
+     * Primarily used for testing purposes.
+     */
+    public void reloadEnabledTenantDomains() {
+        String tenantDomains = System.getProperty(TENANT_DOMAINS, System.getenv(TENANT_DOMAINS));
+        Map<String, String> newMap = new HashMap<>();
+        if (tenantDomains != null) {
+            for (String tenantDomain : tenantDomains.split(",")) {
+                newMap.put(tenantDomain.trim(), tenantDomain.trim());
+            }
+        }
+        this.enabledTenantDomains = newMap.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(newMap);
+        log.debug("[TREBLLE]: Reloaded Enabled Tenant Domains: " + Arrays.toString(enabledTenantDomains.keySet().toArray()));
+    }
+
+    /**
      * Shutdown method to gracefully close resources.
      * Should be called during application shutdown.
      */
     public void shutdown() {
-        log.info("Shutting down Treblle DataHolder resources");
+        log.info("[TREBLLE]: Shutting down DataHolder resources");
 
         // Shutdown event queue and worker threads
         if (eventQueue != null) {
@@ -134,15 +155,15 @@ public class DataHolder {
         if (httpClient != null) {
             try {
                 httpClient.close();
-                log.debug("HTTP client closed successfully");
+                log.debug("[TREBLLE]: HTTP client closed successfully");
             } catch (IOException e) {
-                log.error("Error closing HTTP client", e);
+                log.error("[TREBLLE]: Error closing HTTP client", e);
             }
         }
 
         if (connectionManager != null) {
             connectionManager.close();
-            log.debug("Connection manager closed successfully");
+            log.debug("[TREBLLE]: Connection manager closed successfully");
         }
     }
 }

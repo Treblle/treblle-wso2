@@ -1,7 +1,6 @@
 package com.treblle.wso2publisher.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Map;
 
@@ -14,7 +13,7 @@ public class Response {
   @JsonProperty("load_time")
   private Double loadTime;
 
-  private JsonNode body;
+  private String bodyRaw;
 
   public Map<String, String> getHeaders() {
     return headers;
@@ -48,11 +47,11 @@ public class Response {
     this.loadTime = loadTime;
   }
 
-  public JsonNode getBody() {
-    return body;
+  public String getBodyRaw() {
+    return bodyRaw;
   }
 
-  public void setBody(JsonNode body) {
-    this.body = body;
+  public void setBodyRaw(String bodyRaw) {
+    this.bodyRaw = bodyRaw;
   }
 }

@@ -563,7 +563,10 @@ public class APILogHandler extends AbstractHandler {
         }
         // Populate the headers map with the transport headers
         for (Object key : headers.keySet()) {
-            headersMap.put(key.toString(), headers.get(key).toString());
+            Object value = headers.get(key);
+            if (key != null && value != null) {
+                headersMap.put(key.toString(), value.toString());
+            }
         }
         return headersMap;
     }

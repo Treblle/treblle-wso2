@@ -15,6 +15,7 @@ Treblle is an API intelligence platfom that helps developers, teams and organiza
 | 4.2.x | ✅ Supported | `wso2am-4.2` | 9.2.0 | 4.0.0-wso2v103 |
 | 4.3.x | ✅ Supported (Default) | `wso2am-4.3` | 9.29.120 | 4.0.0-wso2v105 |
 | 4.4.x | ✅ Supported | `wso2am-4.4` | 9.31.0 | 4.0.0-wso2v106 |
+| 4.6.x | ✅ Supported | `wso2am-4.6` | 9.32.147 | 4.0.0-wso2v262 |
 
 **Note:** The extension uses Maven profiles to support multiple WSO2 versions. By default, it builds for WSO2 APIM 4.3.x.
 
@@ -78,6 +79,9 @@ mvn clean install -P wso2am-4.3
 
 # For WSO2 APIM 4.4.x
 mvn clean install -P wso2am-4.4
+
+# For WSO2 APIM 4.6.x
+mvn clean install -P wso2am-4.6
 ```
 
 All profiles produce the same JAR name: `treblle-wso2-3.0.0.jar`.
@@ -87,7 +91,7 @@ All profiles produce the same JAR name: `treblle-wso2-3.0.0.jar`.
 To build artifacts for all supported versions:
 
 ```sh
-mvn clean install -P wso2am-4.0,wso2am-4.1,wso2am-4.2,wso2am-4.3,wso2am-4.4
+mvn clean install -P wso2am-4.0,wso2am-4.1,wso2am-4.2,wso2am-4.3,wso2am-4.4,wso2am-4.6
 ```
 
 **Important:** Ensure you deploy the correct JAR artifact that matches your WSO2 API Manager version.

@@ -252,6 +252,19 @@
                 <finalName>treblle-wso2-${project.version}</finalName>
             </build>
         </profile>
+
+        <!-- Profile for WSO2 API Manager 4.6.x -->
+        <profile>
+            <id>wso2am-4.6</id>
+            <properties>
+                <wso2.apim.version>9.32.147</wso2.apim.version>
+                <wso2.synapse.version>4.0.0-wso2v262</wso2.synapse.version>
+                <wso2.version.suffix>4.6.x</wso2.version.suffix>
+            </properties>
+            <build>
+                <finalName>treblle-wso2-${project.version}</finalName>
+            </build>
+        </profile>
     </profiles>
 
 </project>

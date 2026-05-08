@@ -226,7 +226,11 @@ public class PublisherClient {
             request.put("route_path", trebllePayload.getData().getRequest().getRoutePath());
         }
 
-        request.put("body", parseBodyRaw(trebllePayload.getData().getRequest().getBodyRaw()));
+        if (trebllePayload.isDisableResponseBody()) {
+            request.put("body", new org.json.JSONObject());
+        } else {
+            request.put("body", parseBodyRaw(trebllePayload.getData().getRequest().getBodyRaw()));
+        }
 
         data.put("request", request);
 

@@ -156,4 +156,94 @@ public class PublisherClientTest {
         Assert.assertEquals("****", resBodyJson.getString("dob"));
         Assert.assertEquals("5000", resBodyJson.getString("balance")); // should NOT be masked
     }
+
+    private TrebllePayload buildMinimalPayload(String reqBodyRaw, String resBodyRaw) {
+        TrebllePayload payload = new TrebllePayload();
+        payload.setSdkToken("abc123");
+        payload.setApiKey("def456");
+
+        Data data = new Data();
+
+        Language language = new Language();
+        language.setName("java");
+        language.setVersion("11");
+        data.setLanguage(language);
+
+        Request request = new Request();
+        request.setTimestamp("2025-01-01 00:00:00");
+        request.setIp("127.0.0.1");
+        request.setUserAgent("test");
+        request.setMethod("POST");
+        request.setUrl("https://example.com/api");
+        request.setHeaders(new HashMap<>());
+        request.setBodyRaw(reqBodyRaw);
+        data.setRequest(request);
+
+        Response response = new Response();
+        response.setCode(200);
+        response.setSize(100L);
+        response.setHeaders(new HashMap<>());
+        response.setLoadTime(50.0);
+        response.setBodyRaw(resBodyRaw);
+        data.setResponse(response);
+
+        Server server = new Server();
+        server.setIp("10.0.0.1");
+        server.setTimezone("UTC");
+        OperatingSystem os = new OperatingSystem();
+        os.setName("Linux");
+        os.setArchitecture("amd64");
+        os.setRelease("5.0");
+        server.setOs(os);
+        data.setServer(server);
+
+        data.setErrors(new ArrayList<>());
+        payload.setData(data);
+        return payload;
+    }
+
+    @Test
+    public void buildRequestBody_DisableBody_BlanksRequestAndResponseBody() throws Exception {
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
+
+        TrebllePayload payload = buildMinimalPayload(
+                "{\"name\":\"Alice\",\"secret\":\"s3cr3t\"}",
+                "{\"token\":\"xyz\"}");
+        payload.setDisableResponseBody(true);
+
+        Method buildMethod = PublisherClient.class.getDeclaredMethod("buildRequestBodyForTrebllePayload", TrebllePayload.class);
+        buildMethod.setAccessible(true);
+        org.json.JSONObject result = (org.json.JSONObject) buildMethod.invoke(publisherClient, payload);
+
+        org.json.JSONObject dataJson = result.getJSONObject("data");
+
+        // Request body must be empty
+        Assert.assertEquals(0, dataJson.getJSONObject("request").getJSONObject("body").length());
+
+        // Response body must be empty and size reset to 0
+        org.json.JSONObject responseJson = dataJson.getJSONObject("response");
+        Assert.assertEquals(0, responseJson.getJSONObject("body").length());
+        Assert.assertEquals(0, responseJson.getInt("size"));
+    }
+
+    @Test
+    public void buildRequestBody_EnabledBody_SendsRequestAndResponseBody() throws Exception {
+        PublisherClient publisherClient = new PublisherClient("abc123", "def456",
+                DataHolder.getInstance().getHttpClient());
+
+        TrebllePayload payload = buildMinimalPayload(
+                "{\"name\":\"Alice\"}",
+                "{\"status\":\"ok\"}");
+        payload.setDisableResponseBody(false);
+
+        Method buildMethod = PublisherClient.class.getDeclaredMethod("buildRequestBodyForTrebllePayload", TrebllePayload.class);
+        buildMethod.setAccessible(true);
+        org.json.JSONObject result = (org.json.JSONObject) buildMethod.invoke(publisherClient, payload);
+
+        org.json.JSONObject dataJson = result.getJSONObject("data");
+
+        Assert.assertEquals("Alice", dataJson.getJSONObject("request").getJSONObject("body").getString("name"));
+        Assert.assertEquals("ok", dataJson.getJSONObject("response").getJSONObject("body").getString("status"));
+    }
 }

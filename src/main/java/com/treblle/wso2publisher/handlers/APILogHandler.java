@@ -576,20 +576,33 @@ public class APILogHandler extends AbstractHandler {
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
 
-        try {
-            RelayUtils.buildMessage(axis2MsgContext);
-        } catch (Exception e) {
-            log.error("[TREBLLE]: Error building message: " + e.getMessage());
-            return null;
-        }
-
-        // Determine content type case-insensitively
+        // Determine content type case-insensitively BEFORE building the message.
         String contentType = null;
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             if ("content-type".equalsIgnoreCase(entry.getKey())) {
                 contentType = entry.getValue().toLowerCase();
                 break;
             }
+        }
+
+        // Never build/consume binary payloads. In the WSO2 pass-through transport a binary
+        // body (e.g. image/png, application/pdf, application/octet-stream) is streamed straight
+        // to the client without being parsed into memory. Calling RelayUtils.buildMessage() on
+        // it drains the pass-through pipe and forces a re-serialization that strips/corrupts the
+        // attachment. We skip body capture for non-text content and let the stream pass through
+        // untouched — request/response metadata (code, headers, size, timing) is still logged.
+        if (contentType != null && !isTextBasedContentType(contentType)) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Skipping body capture for binary content type: " + contentType);
+            }
+            return null;
+        }
+
+        try {
+            RelayUtils.buildMessage(axis2MsgContext);
+        } catch (Exception e) {
+            log.error("[TREBLLE]: Error building message: " + e.getMessage());
+            return null;
         }
 
         // Try JSON first — covers application/json and cases where Content-Type is missing/wrong
@@ -632,6 +645,19 @@ public class APILogHandler extends AbstractHandler {
         }
 
         return null;
+    }
+
+    /**
+     * Returns true for content types whose body is safe to build and capture as text.
+     * Anything else (images, PDFs, octet-stream, audio/video, fonts, etc.) is treated as
+     * binary and must not be passed to RelayUtils.buildMessage() in the pass-through flow.
+     */
+    private boolean isTextBasedContentType(String contentType) {
+        return contentType.contains("json")
+                || contentType.contains("xml")
+                || contentType.contains("text/")
+                || contentType.contains("x-www-form-urlencoded")
+                || contentType.contains("multipart/form-data");
     }
 
     private String parseUrlEncodedBodyRaw(String raw) {

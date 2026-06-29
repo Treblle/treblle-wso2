@@ -390,6 +390,65 @@ public class APILogHandlerTest {
     }
 
     @Test
+    public void testIsTextBasedContentType() throws Exception {
+        APILogHandler apiLogHandler = new APILogHandler();
+        Method method = APILogHandler.class.getDeclaredMethod("isTextBasedContentType", String.class);
+        method.setAccessible(true);
+
+        // Text-based types should be captured
+        Assert.assertTrue((boolean) method.invoke(apiLogHandler, "application/json"));
+        Assert.assertTrue((boolean) method.invoke(apiLogHandler, "application/json; charset=utf-8"));
+        Assert.assertTrue((boolean) method.invoke(apiLogHandler, "application/xml"));
+        Assert.assertTrue((boolean) method.invoke(apiLogHandler, "text/plain"));
+        Assert.assertTrue((boolean) method.invoke(apiLogHandler, "text/html"));
+        Assert.assertTrue((boolean) method.invoke(apiLogHandler, "application/x-www-form-urlencoded"));
+        Assert.assertTrue((boolean) method.invoke(apiLogHandler, "multipart/form-data; boundary=x"));
+
+        // Binary types must NOT be captured (so the pass-through stream is left untouched)
+        Assert.assertFalse((boolean) method.invoke(apiLogHandler, "image/png"));
+        Assert.assertFalse((boolean) method.invoke(apiLogHandler, "image/jpeg"));
+        Assert.assertFalse((boolean) method.invoke(apiLogHandler, "application/pdf"));
+        Assert.assertFalse((boolean) method.invoke(apiLogHandler, "application/octet-stream"));
+        Assert.assertFalse((boolean) method.invoke(apiLogHandler, "audio/mpeg"));
+        Assert.assertFalse((boolean) method.invoke(apiLogHandler, "video/mp4"));
+        Assert.assertFalse((boolean) method.invoke(apiLogHandler, "font/woff2"));
+    }
+
+    @Test
+    public void testGetMessageBodyRawSkipsBinaryContent() throws Exception {
+
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+
+        // Place a readable JSON payload on the message. If getMessageBodyRaw were to build/read
+        // the body for a binary content type, it would return this string. The guard must
+        // short-circuit BEFORE touching the stream, so it returns null for image/png.
+        org.apache.synapse.commons.json.JsonUtil.getNewJsonPayload(
+                axisMsgCtx, "{\"would_be_read\":true}", true, true);
+
+        APILogHandler apiLogHandler = new APILogHandler();
+        Method method = APILogHandler.class.getDeclaredMethod("getMessageBodyRaw", MessageContext.class, Map.class);
+        method.setAccessible(true);
+
+        // Binary response: must skip capture entirely -> null
+        Map<String, String> pngHeaders = new HashMap<>();
+        pngHeaders.put("Content-Type", "image/png");
+        Object pngBody = method.invoke(apiLogHandler, synCtx, pngHeaders);
+        assertNull("Binary (image/png) body must not be captured", pngBody);
+
+        // Text response with the same payload present: should be captured normally
+        Map<String, String> jsonHeaders = new HashMap<>();
+        jsonHeaders.put("Content-Type", "application/json");
+        Object jsonBody = method.invoke(apiLogHandler, synCtx, jsonHeaders);
+        assertNotNull("JSON body should be captured", jsonBody);
+        Assert.assertTrue(((String) jsonBody).contains("would_be_read"));
+    }
+
+    @Test
     public void testPerApiMaskKeywordsOnPayload() throws Exception {
 
         SynapseConfiguration synCfg = new SynapseConfiguration();

@@ -352,7 +352,9 @@ public class APILogHandler extends AbstractHandler {
         // Retrieve and handle request headers
         Map<String, String> reqHeaders = (Map<String, String>) messageContext.getProperty(TREBLLE_REQ_HEADERS);
         if (reqHeaders == null) {
-            log.error("[TREBLLE]: Request headers are null. Setting a default value.");
+            if (log.isDebugEnabled()) {
+                log.warn("[TREBLLE]: Request headers are null. Setting a default value.");
+            }
             reqHeaders = new HashMap<String, String>();
         }
         // Retrieve the raw request body string captured in handleRequest

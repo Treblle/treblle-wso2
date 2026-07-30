@@ -34,6 +34,23 @@
             <version>1.9.19</version>
         </dependency>
 
+        <!--
+            org.json is embedded into the bundle (see maven-bundle-plugin Embed-Dependency)
+            so the handler never has to wire it from the WSO2 OSGi runtime, whose exported
+            version drifts across APIM releases. Pinned explicitly for deterministic builds
+            across every wso2am-* profile.
+        -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <!--
+                Pinned to a pre-multi-release build: later org.json jars ship a
+                META-INF/versions/9/module-info.class that the legacy bnd in
+                maven-bundle-plugin 3.0.1 cannot parse when embedding.
+            -->
+            <version>20190722</version>
+        </dependency>
+
         <dependency>
             <groupId>org.wso2.carbon.apimgt</groupId>
             <artifactId>org.wso2.carbon.apimgt.impl</artifactId>
@@ -162,10 +179,37 @@
                     <instructions>
                         <Bundle-SymbolicName>treblle-wso2</Bundle-SymbolicName>
                         <Bundle-Name>treblle-wso2</Bundle-Name>
+                        <!--
+                            Export only the handler package (the one Synapse loads by class
+                            name). The dto/commons packages and the embedded org.json stay
+                            bundle-private so the export carries no uses-constraint on the
+                            embedded copy of org.json.
+                        -->
                         <Export-Package>
-                            com.treblle.wso2publisher.*,
+                            com.treblle.wso2publisher.handlers
                         </Export-Package>
+                        <!--
+                            Embed org.json as a nested jar on the Bundle-ClassPath so its
+                            classes live inside this bundle and are never wired from the
+                            runtime. Nested (not inlined) because the legacy bnd in
+                            maven-bundle-plugin 3.0.1 cannot parse org.json's multi-release
+                            module-info.class when unpacking.
+                        -->
+                        <Embed-Dependency>json;groupId=org.json;inline=false</Embed-Dependency>
+                        <Embed-Transitive>false</Embed-Transitive>
+                        <!--
+                            Require the WSO2 platform packages the handler genuinely needs so
+                            a real incompatibility fails LOUDLY at deploy time instead of
+                            silently (the previous blanket resolution:=optional turned a
+                            missing/mismatched package into a runtime NoClassDefFoundError).
+                            Everything else stays optional.
+                        -->
                         <Import-Package>
+                            org.apache.synapse.*,
+                            org.apache.axis2.*,
+                            org.apache.axiom.*,
+                            org.apache.http.*,
+                            org.apache.commons.logging,
                             *; resolution:=optional
                         </Import-Package>
                     </instructions>

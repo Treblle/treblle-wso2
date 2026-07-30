@@ -12,7 +12,6 @@ import org.junit.Test;
 import com.treblle.wso2publisher.dto.TrebllePayload;
 import com.treblle.wso2publisher.handlers.DataHolder;
 
-import com.google.common.cache.Cache;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -315,7 +314,7 @@ public class APILogHandlerTest {
         // Clear the cache before test
         Field cacheField = APILogHandler.class.getDeclaredField("apiConfigCache");
         cacheField.setAccessible(true);
-        ((Cache<?, ?>) cacheField.get(null)).invalidateAll();
+        ((APILogHandler.PerApiConfigCache) cacheField.get(null)).invalidateAll();
 
         APILogHandler apiLogHandler = new APILogHandler();
         boolean result = apiLogHandler.handleRequest(synCtx);
@@ -337,7 +336,7 @@ public class APILogHandlerTest {
         // Clear the cache before test
         Field cacheField = APILogHandler.class.getDeclaredField("apiConfigCache");
         cacheField.setAccessible(true);
-        Cache<String, ?> cache = (Cache<String, ?>) cacheField.get(null);
+        APILogHandler.PerApiConfigCache cache = (APILogHandler.PerApiConfigCache) cacheField.get(null);
         cache.invalidateAll();
 
         SynapseConfiguration synCfg = new SynapseConfiguration();

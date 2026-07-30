@@ -4,15 +4,11 @@ import java.net.InetAddress;
 import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.treblle.wso2publisher.commons.PropertyUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.text.StringEscapeUtils;
 import org.apache.synapse.MessageContext;
 import org.apache.synapse.commons.json.JsonUtil;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
@@ -84,10 +80,9 @@ public class APILogHandler extends AbstractHandler {
     }
 
     private static final int API_CONFIG_CACHE_MAX_SIZE = 1000;
-    private static final Cache<String, PerApiConfig> apiConfigCache = CacheBuilder.newBuilder()
-        .maximumSize(API_CONFIG_CACHE_MAX_SIZE)
-        .expireAfterWrite(5, TimeUnit.MINUTES)
-        .build();
+    private static final long API_CONFIG_CACHE_TTL_MILLIS = 5 * 60 * 1000L; // 5 minutes
+    private static final PerApiConfigCache apiConfigCache =
+        new PerApiConfigCache(API_CONFIG_CACHE_MAX_SIZE, API_CONFIG_CACHE_TTL_MILLIS);
     private static volatile String serverIP;
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
@@ -100,7 +95,7 @@ public class APILogHandler extends AbstractHandler {
         log.warn("[TREBLLE]:setAdditionalProperties called with: " + additionalPropertiesJsonXmlEscaped);
         this.additionalProperties.clear();
         if (additionalPropertiesJsonXmlEscaped != null && !additionalPropertiesJsonXmlEscaped.trim().isEmpty()) {
-            String additionalPropertiesJson = StringEscapeUtils.unescapeXml(additionalPropertiesJsonXmlEscaped);
+            String additionalPropertiesJson = unescapeXml(additionalPropertiesJsonXmlEscaped);
             try {
                 JSONObject jsonObject = new JSONObject(additionalPropertiesJson);
                 this.additionalProperties.putAll(PropertyUtils.toProperties(jsonObject));
@@ -319,7 +314,7 @@ public class APILogHandler extends AbstractHandler {
         String clientIP;
         // Check if the X-FORWARDED-FOR header is present in the headers map
         String xForwardedForHeader = (String) headers.get(HEADER_X_FORWARDED_FOR);
-        if (!StringUtils.isEmpty(xForwardedForHeader)) {
+        if (!isEmpty(xForwardedForHeader)) {
             // Use the first IP address in the X-FORWARDED-FOR header
             clientIP = xForwardedForHeader;
             int index = xForwardedForHeader.indexOf(',');
@@ -331,7 +326,7 @@ public class APILogHandler extends AbstractHandler {
             clientIP = (String) axis2Context.getProperty(org.apache.axis2.context.MessageContext.REMOTE_ADDR);
         }
         // Return null if the client IP is empty
-        if (StringUtils.isEmpty(clientIP)) {
+        if (isEmpty(clientIP)) {
             return null;
         }
         // Ignore the port if present and only use the IP address
@@ -1114,6 +1109,76 @@ public class APILogHandler extends AbstractHandler {
                 .trim();
     }
 
+    /**
+     * True when the string is null or empty. Local replacement for
+     * org.apache.commons.lang.StringUtils.isEmpty so the bundle carries no
+     * commons-lang runtime dependency to wire in the OSGi container.
+     */
+    private static boolean isEmpty(String value) {
+        return value == null || value.isEmpty();
+    }
+
+    /**
+     * Unescape the five predefined XML entities plus numeric character references.
+     * Local replacement for org.apache.commons.text.StringEscapeUtils.unescapeXml —
+     * commons-text is only used to decode the velocity-injected additionalProperties
+     * JSON, and dropping it removes a fragile (provided-scope) OSGi import.
+     */
+    private static String unescapeXml(String input) {
+        if (input == null || input.indexOf('&') < 0) {
+            return input;
+        }
+        StringBuilder out = new StringBuilder(input.length());
+        int i = 0;
+        int len = input.length();
+        while (i < len) {
+            char c = input.charAt(i);
+            if (c != '&') {
+                out.append(c);
+                i++;
+                continue;
+            }
+            int semi = input.indexOf(';', i + 1);
+            if (semi < 0) { // no terminator — treat as literal
+                out.append(c);
+                i++;
+                continue;
+            }
+            String entity = input.substring(i + 1, semi);
+            String decoded = decodeXmlEntity(entity);
+            if (decoded != null) {
+                out.append(decoded);
+                i = semi + 1;
+            } else { // unknown entity — leave the '&' literal and continue
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
+    }
+
+    private static String decodeXmlEntity(String entity) {
+        switch (entity) {
+            case "amp":  return "&";
+            case "lt":   return "<";
+            case "gt":   return ">";
+            case "quot": return "\"";
+            case "apos": return "'";
+            default:
+                if (!entity.isEmpty() && entity.charAt(0) == '#') {
+                    try {
+                        int code = (entity.length() > 1 && (entity.charAt(1) == 'x' || entity.charAt(1) == 'X'))
+                                ? Integer.parseInt(entity.substring(2), 16)
+                                : Integer.parseInt(entity.substring(1));
+                        return new String(Character.toChars(code));
+                    } catch (RuntimeException e) {
+                        return null; // malformed numeric reference
+                    }
+                }
+                return null;
+        }
+    }
+
     private static final class PerApiConfig {
         final List<String> maskKeywords; // null = not configured
         final boolean disableResponseBody;
@@ -1121,6 +1186,94 @@ public class APILogHandler extends AbstractHandler {
         PerApiConfig(List<String> maskKeywords, boolean disableResponseBody) {
             this.maskKeywords = maskKeywords;
             this.disableResponseBody = disableResponseBody;
+        }
+    }
+
+    /**
+     * Minimal thread-safe, size-bounded, write-expiring cache — a drop-in replacement
+     * for the former Guava {@code Cache} so the bundle carries no Guava runtime
+     * dependency to wire in the OSGi container (Guava's major version drifts across
+     * WSO2 releases, which made the optional import silently fail on 4.6).
+     *
+     * <p>Keys are bounded by the number of deployed APIs, so overflow is rare; on
+     * overflow we purge expired entries and, if still full, evict the oldest.
+     * Package-private so tests can reference it.
+     */
+    static final class PerApiConfigCache {
+        private final ConcurrentHashMap<String, Entry> map = new ConcurrentHashMap<>();
+        private final int maxSize;
+        private final long ttlMillis;
+
+        PerApiConfigCache(int maxSize, long ttlMillis) {
+            this.maxSize = maxSize;
+            this.ttlMillis = ttlMillis;
+        }
+
+        PerApiConfig getIfPresent(String key) {
+            if (key == null) {
+                return null;
+            }
+            Entry e = map.get(key);
+            if (e == null) {
+                return null;
+            }
+            if (isExpired(e)) {
+                map.remove(key, e);
+                return null;
+            }
+            return e.value;
+        }
+
+        void put(String key, PerApiConfig value) {
+            if (key == null) {
+                return;
+            }
+            if (map.size() >= maxSize && !map.containsKey(key)) {
+                evictForSpace();
+            }
+            map.put(key, new Entry(value, System.currentTimeMillis()));
+        }
+
+        void invalidateAll() {
+            map.clear();
+        }
+
+        private boolean isExpired(Entry e) {
+            return System.currentTimeMillis() - e.writeTimeMillis > ttlMillis;
+        }
+
+        private void evictForSpace() {
+            // First drop anything already expired.
+            for (Map.Entry<String, Entry> me : map.entrySet()) {
+                if (isExpired(me.getValue())) {
+                    map.remove(me.getKey(), me.getValue());
+                }
+            }
+            // Still full → evict the oldest entry.
+            while (map.size() >= maxSize) {
+                String oldestKey = null;
+                long oldest = Long.MAX_VALUE;
+                for (Map.Entry<String, Entry> me : map.entrySet()) {
+                    if (me.getValue().writeTimeMillis < oldest) {
+                        oldest = me.getValue().writeTimeMillis;
+                        oldestKey = me.getKey();
+                    }
+                }
+                if (oldestKey == null) {
+                    break;
+                }
+                map.remove(oldestKey);
+            }
+        }
+
+        private static final class Entry {
+            final PerApiConfig value;
+            final long writeTimeMillis;
+
+            Entry(PerApiConfig value, long writeTimeMillis) {
+                this.value = value;
+                this.writeTimeMillis = writeTimeMillis;
+            }
         }
     }
 

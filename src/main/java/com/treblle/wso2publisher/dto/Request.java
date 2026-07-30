@@ -1,7 +1,5 @@
 package com.treblle.wso2publisher.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.util.Map;
 
 public class Request {
@@ -10,14 +8,12 @@ public class Request {
   private String ip;
   private String url;
 
-  @JsonProperty("user_agent")
   private String userAgent;
 
   private String method;
   private Map<String, String> headers;
   private String bodyRaw;
 
-  @JsonProperty("route_path")
   private String routePath;
 
   public String getTimestamp() {

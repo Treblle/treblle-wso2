@@ -13,11 +13,16 @@
     <name>Custom API Log Handler</name>
 
     <dependencies>
-        <!-- apigmt dependency -->
+        <!--
+            apimgt dependency — provided: only APIMgtGatewayConstants is referenced, and
+            that collapses to an inlined compile-time constant, so nothing is needed (or
+            imported) from this artifact at runtime.
+        -->
         <dependency>
             <groupId>org.wso2.carbon.apimgt</groupId>
             <artifactId>org.wso2.carbon.apimgt.gateway</artifactId>
             <version>${wso2.apim.version}</version>
+            <scope>provided</scope>
         </dependency>
 
         <!-- synapse dependency -->
@@ -26,12 +31,6 @@
             <artifactId>synapse-core</artifactId>
             <version>${wso2.synapse.version}</version>
             <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.aspectj</groupId>
-            <artifactId>aspectjweaver</artifactId>
-            <version>1.9.19</version>
         </dependency>
 
         <!--
@@ -209,7 +208,7 @@
                             org.apache.axis2.*,
                             org.apache.axiom.*,
                             org.apache.http.*,
-                            org.apache.commons.logging,
+                            org.apache.commons.logging;version="[1.2,2)",
                             *; resolution:=optional
                         </Import-Package>
                     </instructions>

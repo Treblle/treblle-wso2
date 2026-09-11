@@ -114,7 +114,7 @@ public class APILogHandlerTest {
         ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
         MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
                 new Axis2SynapseEnvironment(cfgCtx, synCfg));
-        synCtx.setProperty("APIMgtGatewayConstants.REQUEST_EXECUTION_START_TIME",
+        synCtx.setProperty(org.wso2.carbon.apimgt.gateway.APIMgtGatewayConstants.REQUEST_EXECUTION_START_TIME,
                 String.valueOf(System.currentTimeMillis()));
         Thread.sleep(1000);
 
@@ -129,6 +129,14 @@ public class APILogHandlerTest {
         // Assert the expected results
         assertNotNull(responseTime);
         Assert.assertTrue(responseTime >= 1000);
+        // Duration must be a real elapsed time, not "now minus epoch 0"
+        Assert.assertTrue(responseTime < 60_000);
+
+        // Without a start time the duration is unknown and must be reported as 0
+        MessageContext emptyCtx = new Axis2MessageContext(new org.apache.axis2.context.MessageContext(),
+                synCfg, new Axis2SynapseEnvironment(cfgCtx, synCfg));
+        long noStartTime = (long) getResponseTimeMethod.invoke(apiLogHandler, emptyCtx);
+        Assert.assertEquals(0L, noStartTime);
     }
 
     @Test
@@ -401,9 +409,10 @@ public class APILogHandlerTest {
         Assert.assertTrue((boolean) method.invoke(apiLogHandler, "text/plain"));
         Assert.assertTrue((boolean) method.invoke(apiLogHandler, "text/html"));
         Assert.assertTrue((boolean) method.invoke(apiLogHandler, "application/x-www-form-urlencoded"));
-        Assert.assertTrue((boolean) method.invoke(apiLogHandler, "multipart/form-data; boundary=x"));
 
-        // Binary types must NOT be captured (so the pass-through stream is left untouched)
+        // Binary types must NOT be captured (so the pass-through stream is left untouched).
+        // multipart/form-data counts as binary: its parts routinely carry file content.
+        Assert.assertFalse((boolean) method.invoke(apiLogHandler, "multipart/form-data; boundary=x"));
         Assert.assertFalse((boolean) method.invoke(apiLogHandler, "image/png"));
         Assert.assertFalse((boolean) method.invoke(apiLogHandler, "image/jpeg"));
         Assert.assertFalse((boolean) method.invoke(apiLogHandler, "application/pdf"));
@@ -445,6 +454,97 @@ public class APILogHandlerTest {
         Object jsonBody = method.invoke(apiLogHandler, synCtx, jsonHeaders, false);
         assertNotNull("JSON body should be captured", jsonBody);
         Assert.assertTrue(((String) jsonBody).contains("would_be_read"));
+    }
+
+    @Test
+    public void testGetSourceIPHeaderLookupIsCaseInsensitive() throws Exception {
+
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+
+        // Real traffic sends "X-Forwarded-For" (mixed case), not "X-FORWARDED-FOR"
+        Map<String, String> transportHeaders = new HashMap<>();
+        transportHeaders.put("X-Forwarded-For", "203.0.113.7, 10.0.0.1");
+        axisMsgCtx.setProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS, transportHeaders);
+
+        APILogHandler apiLogHandler = new APILogHandler();
+
+        Method getHeadersMethod = APILogHandler.class.getDeclaredMethod("getHeaders", MessageContext.class);
+        getHeadersMethod.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<String, String> headers = (Map<String, String>) getHeadersMethod.invoke(apiLogHandler, synCtx);
+
+        Method getSourceIPMethod = APILogHandler.class.getDeclaredMethod("getSourceIP",
+                org.apache.axis2.context.MessageContext.class, Map.class);
+        getSourceIPMethod.setAccessible(true);
+        String sourceIP = (String) getSourceIPMethod.invoke(apiLogHandler, axisMsgCtx, headers);
+        Assert.assertEquals("203.0.113.7", sourceIP);
+    }
+
+    @Test
+    public void testGetMessageBodyRawSkipsChunkedWithUnknownSize() throws Exception {
+
+        SynapseConfiguration synCfg = new SynapseConfiguration();
+        org.apache.axis2.context.MessageContext axisMsgCtx = new org.apache.axis2.context.MessageContext();
+        AxisConfiguration axisConfig = new AxisConfiguration();
+        ConfigurationContext cfgCtx = new ConfigurationContext(axisConfig);
+        MessageContext synCtx = new Axis2MessageContext(axisMsgCtx, synCfg,
+                new Axis2SynapseEnvironment(cfgCtx, synCfg));
+
+        APILogHandler apiLogHandler = new APILogHandler();
+        Method method = APILogHandler.class.getDeclaredMethod("getMessageBodyRaw", MessageContext.class, Map.class, boolean.class);
+        method.setAccessible(true);
+
+        // Chunked with no Content-Length: size is unknown, capture must be skipped with a
+        // placeholder (never built into memory)
+        Map<String, String> chunkedHeaders = new HashMap<>();
+        chunkedHeaders.put("Content-Type", "application/json");
+        chunkedHeaders.put("Transfer-Encoding", "chunked");
+        String body = (String) method.invoke(apiLogHandler, synCtx, chunkedHeaders, false);
+        assertNotNull(body);
+        Assert.assertTrue(body.contains("chunked transfer encoding"));
+
+        // Chunked but WITH a Content-Length under the cap: the normal capture path applies
+        org.apache.synapse.commons.json.JsonUtil.getNewJsonPayload(
+                axisMsgCtx, "{\"ok\":true}", true, true);
+        Map<String, String> sizedHeaders = new HashMap<>();
+        sizedHeaders.put("Content-Type", "application/json");
+        sizedHeaders.put("Transfer-Encoding", "chunked");
+        sizedHeaders.put("Content-Length", "11");
+        String sizedBody = (String) method.invoke(apiLogHandler, synCtx, sizedHeaders, false);
+        assertNotNull(sizedBody);
+        Assert.assertTrue(sizedBody.contains("ok"));
+    }
+
+    @Test
+    public void testGetClaim() throws Exception {
+
+        APILogHandler apiLogHandler = new APILogHandler();
+        Method method = APILogHandler.class.getDeclaredMethod("getClaim", String.class, String.class);
+        method.setAccessible(true);
+
+        java.util.Base64.Encoder enc = java.util.Base64.getUrlEncoder().withoutPadding();
+        String header = enc.encodeToString("{\"alg\":\"none\"}".getBytes("UTF-8"));
+
+        // Bare claim name
+        String barePayload = enc.encodeToString("{\"subscriber\":\"admin\",\"iss\":\"wso2\"}".getBytes("UTF-8"));
+        Assert.assertEquals("admin", method.invoke(apiLogHandler, header + "." + barePayload + ".sig", "subscriber"));
+
+        // WSO2 URI claim form
+        String uriPayload = enc.encodeToString(
+                "{\"http://wso2.org/claims/subscriber\":\"jane\",\"iss\":\"wso2\"}".getBytes("UTF-8"));
+        Assert.assertEquals("jane", method.invoke(apiLogHandler, header + "." + uriPayload + ".sig", "subscriber"));
+
+        // Missing claim, malformed token, and null must all return null without throwing
+        String otherPayload = enc.encodeToString("{\"iss\":\"wso2\"}".getBytes("UTF-8"));
+        assertNull(method.invoke(apiLogHandler, header + "." + otherPayload + ".sig", "subscriber"));
+        assertNull(method.invoke(apiLogHandler, "not-a-jwt", "subscriber"));
+        assertNull(method.invoke(apiLogHandler, "a.!!!invalid-base64!!!.c", "subscriber"));
+        assertNull(method.invoke(apiLogHandler, new Object[]{null, "subscriber"}));
     }
 
     @Test

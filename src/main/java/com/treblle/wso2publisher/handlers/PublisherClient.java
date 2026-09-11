@@ -10,9 +10,11 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.util.EntityUtils;
 import com.treblle.wso2publisher.dto.TrebllePayload;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -115,29 +117,28 @@ public class PublisherClient {
                 statusCode = response.getStatusLine().getStatusCode();
                 reasonPhrase = response.getStatusLine().getReasonPhrase();
 
+                // Fully consume the entity so the pooled connection is returned to the pool
+                // for reuse. Closing an unconsumed response discards the connection, forcing
+                // a fresh TCP+TLS handshake for every event.
+                EntityUtils.consume(response.getEntity());
+
                 // Log response details for debugging
                 if (log.isDebugEnabled()) {
                     log.debug("[TREBLLE]: Response status: " + statusCode + " " + reasonPhrase);
-                    log.debug("[TREBLLE]: Response headers: " + java.util.Arrays.toString(response.getAllHeaders()));
                     log.debug(String.format("[TREBLLE]: Performance Total (mask+serialize+HTTP): %.2f ms (status: %d, url: %s)",
                             (System.nanoTime() - publishStart) / 1_000_000.0, statusCode, gatewayUrl));
                 }
             }
         } catch (IOException e) {
-            log.error("[TREBLLE]: Error closing HTTP response for SDK token: " + sdkToken, e);
+            log.error("[TREBLLE]: Error closing HTTP response", e);
         }
 
         if (statusCode == 200 || statusCode == 201 || statusCode == 202 || statusCode == 204) {
             log.debug("[TREBLLE]: Event successfully published.");
-        } else if (statusCode >= 400 && statusCode < 500) {
-            log.error("[TREBLLE]: Event publishing failed for SDK token: " + sdkToken + " with status code: " + statusCode
-                    + " and reason: " + reasonPhrase + ". Event will be dropped.");
-        } else if (statusCode >= 500) {
-            log.error("[TREBLLE]: Event publishing failed for SDK token: " + sdkToken + " with status code: " + statusCode
-                    + " and reason: " + reasonPhrase + ". Event will be dropped.");
         } else {
-            log.error("[TREBLLE]: Event publishing failed for SDK token: " + sdkToken + " with unexpected status code: "
-                    + statusCode + ". Event will be dropped.");
+            // Don't include the SDK token (a credential) in log output.
+            log.error("[TREBLLE]: Event publishing failed with status code: " + statusCode
+                    + (reasonPhrase.isEmpty() ? "" : " and reason: " + reasonPhrase) + ". Event will be dropped.");
         }
 
     }
@@ -161,7 +162,7 @@ public class PublisherClient {
 
         if (log.isDebugEnabled()) {
             log.debug("[TREBLLE]: Sending request to: " + baseUrl);
-            log.debug("[TREBLLE]: x-api-key header set to: " + (sdkTokenValue != null ? sdkTokenValue : "NULL"));
+            log.debug("[TREBLLE]: x-api-key header is " + (sdkTokenValue != null ? "set" : "NULL"));
         }
 
         try {
@@ -173,8 +174,9 @@ public class PublisherClient {
                 log.debug("[TREBLLE]: Payload - " + requestBody);
             }
 
-            // Create entity and wrap with gzip compression
-            StringEntity uncompressed = new StringEntity(requestBody.toString());
+            // Create entity and wrap with gzip compression. UTF-8 explicitly — the
+            // StringEntity default is ISO-8859-1, which mangles non-Latin-1 characters.
+            StringEntity uncompressed = new StringEntity(requestBody.toString(), StandardCharsets.UTF_8);
             GzipCompressingEntity gzipEntity = new GzipCompressingEntity(uncompressed);
             httpPost.setEntity(gzipEntity);
 

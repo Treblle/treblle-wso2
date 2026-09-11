@@ -98,14 +98,18 @@ public class APILogHandler extends AbstractHandler {
     }
 
     public void setAdditionalProperties(String additionalPropertiesJsonXmlEscaped) {
-        log.warn("[TREBLLE]:setAdditionalProperties called with: " + additionalPropertiesJsonXmlEscaped);
+        if (log.isDebugEnabled()) {
+            log.debug("[TREBLLE]:setAdditionalProperties called with: " + additionalPropertiesJsonXmlEscaped);
+        }
         this.additionalProperties.clear();
         if (additionalPropertiesJsonXmlEscaped != null && !additionalPropertiesJsonXmlEscaped.trim().isEmpty()) {
             String additionalPropertiesJson = unescapeXml(additionalPropertiesJsonXmlEscaped);
             try {
                 JSONObject jsonObject = new JSONObject(additionalPropertiesJson);
                 this.additionalProperties.putAll(PropertyUtils.toProperties(jsonObject));
-                log.warn("[TREBLLE]:additionalProperties parsed OK, keys: " + this.additionalProperties.stringPropertyNames());
+                if (log.isDebugEnabled()) {
+                    log.debug("[TREBLLE]:additionalProperties parsed OK, keys: " + this.additionalProperties.stringPropertyNames());
+                }
             } catch (JSONException e) {
                 log.warn("[TREBLLE]:Unable to parse additionalProperties JSON - " + e.getMessage());
             }
@@ -114,7 +118,9 @@ public class APILogHandler extends AbstractHandler {
 
     // Called by Synapse when velocity template injects: <property name="treblleMaskKeywords" value="..."/>
     public void setTreblleMaskKeywords(String value) {
-        log.warn("[TREBLLE]:setTreblleMaskKeywords called with: " + value);
+        if (log.isDebugEnabled()) {
+            log.debug("[TREBLLE]:setTreblleMaskKeywords called with: " + value);
+        }
         if (value != null && !value.trim().isEmpty()) {
             this.additionalProperties.setProperty("treblle_mask_keywords", value.trim());
         }
@@ -122,7 +128,9 @@ public class APILogHandler extends AbstractHandler {
 
     // Called by Synapse when velocity template injects: <property name="treblleDisableResponseBody" value="..."/>
     public void setTreblleDisableResponseBody(String value) {
-        log.warn("[TREBLLE]:setTreblleDisableResponseBody called with: " + value);
+        if (log.isDebugEnabled()) {
+            log.debug("[TREBLLE]:setTreblleDisableResponseBody called with: " + value);
+        }
         if (value != null && !value.trim().isEmpty()) {
             this.additionalProperties.setProperty("treblle_disable_response_body", value.trim());
         }
@@ -218,7 +226,7 @@ public class APILogHandler extends AbstractHandler {
 
             // Capture metadata fields
             messageContext.setProperty(TREBLLE_META_API_VERSION, messageContext.getProperty("api.ut.api_version"));
-            messageContext.setProperty(TREBLLE_SUBSCRIBER, messageContext.getProperty(getClaim(headersMap.get("X-JWT-Assertion"),"subscriber")));
+            messageContext.setProperty(TREBLLE_SUBSCRIBER, getClaim(headersMap.get("X-JWT-Assertion"), "subscriber"));
             messageContext.setProperty(TREBLLE_META_APP_NAME, messageContext.getProperty("api.ut.application.name"));
             messageContext.setProperty(TREBLLE_META_PUBLISHER, messageContext.getProperty("api.ut.apiPublisher"));
             messageContext.setProperty(TREBLLE_META_CUSTOMER_IP, messageContext.getProperty("api.analytics.user.ip"));
@@ -296,24 +304,20 @@ public class APILogHandler extends AbstractHandler {
     }
 
     private long getResponseTime(org.apache.synapse.MessageContext messageContext) {
-        // Initialize the response time to 0
-        long responseTime = 0;
         try {
-            long rtStartTime = 0;
-            // Check if the request execution start time is available in the message context
-            if (messageContext.getProperty(APIMgtGatewayConstants.REQUEST_EXECUTION_START_TIME) != null) {
-                Object objRtStartTime = messageContext.getProperty(APIMgtGatewayConstants.REQUEST_EXECUTION_START_TIME);
-                // Parse the start time from the message context property
-                rtStartTime = (objRtStartTime == null ? 0 : Long.parseLong((String) objRtStartTime));
+            Object objRtStartTime = messageContext.getProperty(APIMgtGatewayConstants.REQUEST_EXECUTION_START_TIME);
+            // Without a start time we cannot compute a duration — report 0 rather than
+            // subtracting from epoch 0, which would yield a nonsense ~1.7e12 ms load_time.
+            if (objRtStartTime == null) {
+                return 0;
             }
-            // Calculate the response time by subtracting the start time from the current
-            // time
-            responseTime = System.currentTimeMillis() - rtStartTime;
+            long rtStartTime = Long.parseLong(String.valueOf(objRtStartTime));
+            return System.currentTimeMillis() - rtStartTime;
         } catch (Exception e) {
             // Log any errors that occur during the calculation of the response time
             log.error("[TREBLLE]: Error getResponseTime - " + e.getMessage(), e);
+            return 0;
         }
-        return responseTime;
     }
 
     /**
@@ -354,14 +358,17 @@ public class APILogHandler extends AbstractHandler {
         if (isEmpty(clientIP)) {
             return null;
         }
-        // Ignore the port if present and only use the IP address
+        // Ignore the port if present and only use the IP address. A single colon means
+        // "host:port"; more than one colon is a bare IPv6 address and is left untouched.
         String[] parts = clientIP.split(":");
         if (parts.length == 2) {
-            log.debug("[TREBLLE]: Port will be ignored and only the IP address will be picked from " + clientIP);
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Port will be ignored and only the IP address will be picked from " + clientIP);
+            }
             clientIP = parts[0];
         }
 
-        return clientIP;
+        return clientIP.trim();
     }
 
     private TrebllePayload createPayload(org.apache.synapse.MessageContext messageContext, String gatewayURL) {
@@ -373,7 +380,7 @@ public class APILogHandler extends AbstractHandler {
         Map<String, String> reqHeaders = (Map<String, String>) messageContext.getProperty(TREBLLE_REQ_HEADERS);
         if (reqHeaders == null) {
             if (log.isDebugEnabled()) {
-                log.warn("[TREBLLE]: Request headers are null. Setting a default value.");
+                log.debug("[TREBLLE]: Request headers are null. Setting a default value.");
             }
             reqHeaders = new HashMap<String, String>();
         }
@@ -408,21 +415,24 @@ public class APILogHandler extends AbstractHandler {
 
         String reqIp = (String) messageContext.getProperty(TREBLLE_REQ_IP);
         if (reqIp == null) {
-            log.warn("[TREBLLE]: Request IP is null. Setting a default value.");
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Request IP is null. Setting a default value.");
+            }
             reqIp = "127.0.0.1";
         }
         request.setIp(reqIp);
 
-        String userAgent = (String) reqHeaders.get("User-Agent");
+        String userAgent = reqHeaders.get("User-Agent");
         if (userAgent == null) {
-            log.warn("[TREBLLE]: User-Agent header is null. Setting a default value.");
             userAgent = "";
         }
         request.setUserAgent(userAgent);
 
         String method = (String) messageContext.getProperty(TREBLLE_REQ_METHOD);
         if (method == null) {
-            log.warn("[TREBLLE]: Request method is null. Setting a default value.");
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Request method is null. Setting a default value.");
+            }
             method = "GET";
         }
         request.setMethod(method);
@@ -576,8 +586,10 @@ public class APILogHandler extends AbstractHandler {
                 .getAxis2MessageContext();
         // Retrieve transport headers from the Axis2 message context
         Map headers = (Map) axis2MsgContext.getProperty(org.apache.axis2.context.MessageContext.TRANSPORT_HEADERS);
-        // Create a map to store the headers as key-value pairs
-        Map<String, String> headersMap = new HashMap<>();
+        // Case-insensitive map: HTTP header names vary in casing across clients and
+        // transports (X-Forwarded-For vs X-FORWARDED-FOR), and all downstream lookups
+        // (client IP, User-Agent, X-JWT-Assertion, Host, Content-Type) rely on get().
+        Map<String, String> headersMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
         if (headers == null) {
             log.debug("[TREBLLE]: Transport headers are null.");
@@ -599,14 +611,18 @@ public class APILogHandler extends AbstractHandler {
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
 
-        // Determine content type and content length case-insensitively BEFORE building the message.
+        // Determine content type, length and transfer encoding case-insensitively BEFORE
+        // building the message.
         String contentType = null;
         String contentLengthHeader = null;
+        String transferEncoding = null;
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             if ("content-type".equalsIgnoreCase(entry.getKey())) {
                 contentType = entry.getValue().toLowerCase();
             } else if ("content-length".equalsIgnoreCase(entry.getKey())) {
                 contentLengthHeader = entry.getValue();
+            } else if ("transfer-encoding".equalsIgnoreCase(entry.getKey())) {
+                transferEncoding = entry.getValue();
             }
         }
 
@@ -638,6 +654,16 @@ public class APILogHandler extends AbstractHandler {
             } catch (NumberFormatException ignored) {
                 // Malformed header — fall through and let the build attempt happen.
             }
+        } else if (transferEncoding != null && transferEncoding.toLowerCase().contains("chunked")) {
+            // Chunked transfer with no Content-Length: the body size is unknown, so the 2MB
+            // pre-check above can't protect us. RelayUtils.buildMessage() would materialize the
+            // ENTIRE stream in heap before we could measure it — an unbounded memory spike on a
+            // gateway worker thread. Skip capture; metadata is still logged.
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Skipping body capture for chunked " + label
+                        + " with unknown size (no Content-Length)");
+            }
+            return JSONObject.quote(label + " payload uses chunked transfer encoding with unknown size");
         }
 
         try {
@@ -657,9 +683,8 @@ public class APILogHandler extends AbstractHandler {
             log.debug("[TREBLLE]: Body is not JSON: " + e.getMessage());
         }
 
-        // For URL-encoded and multipart, extract fields from the SOAP body element tree
-        if (contentType != null && (contentType.contains("application/x-www-form-urlencoded")
-                || contentType.contains("multipart/form-data"))) {
+        // For URL-encoded forms, extract fields from the SOAP body element tree
+        if (contentType != null && contentType.contains("application/x-www-form-urlencoded")) {
             try {
                 org.apache.axiom.om.OMElement bodyElement =
                         axis2MsgContext.getEnvelope().getBody().getFirstElement();
@@ -723,13 +748,14 @@ public class APILogHandler extends AbstractHandler {
      * Returns true for content types whose body is safe to build and capture as text.
      * Anything else (images, PDFs, octet-stream, audio/video, fonts, etc.) is treated as
      * binary and must not be passed to RelayUtils.buildMessage() in the pass-through flow.
+     * multipart/form-data is deliberately excluded: its parts routinely carry binary file
+     * content, and building it risks corrupting the pass-through stream.
      */
     private boolean isTextBasedContentType(String contentType) {
         return contentType.contains("json")
                 || contentType.contains("xml")
                 || contentType.contains("text/")
-                || contentType.contains("x-www-form-urlencoded")
-                || contentType.contains("multipart/form-data");
+                || contentType.contains("x-www-form-urlencoded");
     }
 
     private String parseUrlEncodedBodyRaw(String raw) {
@@ -783,7 +809,9 @@ public class APILogHandler extends AbstractHandler {
         }
         String tenantDomain = (String) messageContext.getProperty("tenant.info.domain");
         if (tenantDomain == null) {
-            log.warn("[TREBLLE]: Tenant domain is null. Skipping the handler.");
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Tenant domain is null. Skipping the handler.");
+            }
             return false;
         }
         return enabledDomains.containsKey(tenantDomain);
@@ -860,12 +888,12 @@ public class APILogHandler extends AbstractHandler {
             }
         }
 
-        // If all direct property lookups fail, log available properties for debugging
+        // If all direct property lookups fail, log available properties for debugging.
+        // Debug level: this fires per request, and WARN here floods wso2carbon.log under load.
         if (log.isDebugEnabled()) {
             logAvailableProperties(messageContext);
+            log.debug("[TREBLLE]:Unable to determine route path template. The 'route_path' field will be null.");
         }
-
-        log.warn("[TREBLLE]:Unable to determine route path template. The 'route_path' field will be null.");
         return null;
     }
 
@@ -896,7 +924,9 @@ public class APILogHandler extends AbstractHandler {
                 log.warn("[TREBLLE]:Error reading property '" + propertyName + "': " + e.getMessage());
             }
         }
-        log.warn("[TREBLLE]:Unable to determine API name. The 'internal_name' field will be null.");
+        if (log.isDebugEnabled()) {
+            log.debug("[TREBLLE]:Unable to determine API name. The 'internal_name' field will be null.");
+        }
         return null;
     }
 
@@ -936,12 +966,12 @@ public class APILogHandler extends AbstractHandler {
             }
         }
 
-        // If all direct property lookups fail, log available properties for debugging
+        // If all direct property lookups fail, log available properties for debugging.
+        // Debug level: this fires per request, and WARN here floods wso2carbon.log under load.
         if (log.isDebugEnabled()) {
             logAvailablePropertiesForUuid(messageContext);
+            log.debug("[TREBLLE]:Unable to determine API UUID. The 'internal_id' field will be null.");
         }
-
-        log.warn("[TREBLLE]:Unable to determine API UUID. The 'internal_id' field will be null.");
         return null;
     }
 
@@ -1166,22 +1196,39 @@ public class APILogHandler extends AbstractHandler {
         }
     }
 
+    /**
+     * Best-effort extraction of a claim value from a JWT without a JSON/JWT library.
+     * Never throws: a malformed token (missing segments, bad base64) must not abort
+     * the rest of the request-property capture in handleRequest.
+     */
     private String getClaim(String jwt, String claim) {
         if (jwt == null) return null;
-        String payload = jwt.split("\\.")[1];
-        String json = new String(Base64.getUrlDecoder().decode(payload));
+        try {
+            String[] segments = jwt.split("\\.");
+            if (segments.length < 2) {
+                return null;
+            }
+            String json = new String(Base64.getUrlDecoder().decode(segments[1]), StandardCharsets.UTF_8);
 
-        String search = "\"" + claim + "\":";
-        int start = json.indexOf(search);
-        if (start == -1) return null;
+            // Match both the bare claim name ("subscriber":) and the WSO2 URI claim form
+            // (…wso2.org\/claims\/subscriber": — note the JSON-escaped slash).
+            int start = json.indexOf("\"" + claim + "\":");
+            if (start == -1) start = json.indexOf("/" + claim + "\":");
+            if (start == -1) return null;
 
-        start += search.length();
-        int end = json.indexOf(",", start);
-        if (end == -1) end = json.indexOf("}", start);
+            start = json.indexOf(':', start) + 1;
+            int end = json.indexOf(',', start);
+            if (end == -1) end = json.indexOf('}', start);
+            if (end == -1) return null;
 
-        return json.substring(start, end)
-                .replace("\"", "")
-                .trim();
+            String value = json.substring(start, end).replace("\"", "").trim();
+            return value.isEmpty() ? null : value;
+        } catch (RuntimeException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Could not extract claim '" + claim + "' from JWT: " + e.getMessage());
+            }
+            return null;
+        }
     }
 
     /**

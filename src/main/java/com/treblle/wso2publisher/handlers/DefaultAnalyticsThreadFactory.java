@@ -21,11 +21,12 @@ public class DefaultAnalyticsThreadFactory implements ThreadFactory {
 
     public Thread newThread(Runnable r) {
         Thread t = new Thread(group, r, namePrefix + threadNumber.getAndIncrement(), 0);
-        if (t.isDaemon()) {
-            t.setDaemon(false);
-        }
+        // Daemon: these threads only drain a telemetry queue. Non-daemon threads would
+        // keep running across bundle redeploys (nothing invokes DataHolder.shutdown())
+        // and could delay JVM shutdown.
+        t.setDaemon(true);
         if (t.getPriority() != Thread.NORM_PRIORITY) {
-            t.setPriority(Thread.NORM_PRIORITY);    
+            t.setPriority(Thread.NORM_PRIORITY);
         }
         return t;
     }

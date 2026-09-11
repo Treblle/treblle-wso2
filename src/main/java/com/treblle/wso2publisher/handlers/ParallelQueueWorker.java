@@ -5,17 +5,16 @@ import org.apache.commons.logging.LogFactory;
 
 import com.treblle.wso2publisher.dto.TrebllePayload;
 
-import java.util.concurrent.BlockingQueue;
-
 /**
  * Will dequeue the events from queues and send then to the publisher client
  * {@link PublisherClient}.
  */
 public class ParallelQueueWorker implements Runnable {
     private static final Log log = LogFactory.getLog(ParallelQueueWorker.class);
-    // Queue to hold the events to be processed
-    private BlockingQueue<TrebllePayload> eventQueue;
-    private PublisherClient client;
+    // Queue to hold the events to be processed (takes go through EventQueue so its
+    // byte accounting stays balanced)
+    private final EventQueue eventQueue;
+    private final PublisherClient client;
 
     /**
      * Constructor to initialize the ParallelQueueWorker with the event queue and publisher client.
@@ -23,7 +22,7 @@ public class ParallelQueueWorker implements Runnable {
      * @param queue           the queue holding the events
      * @param publisherClient the client to publish the events
      */
-    public ParallelQueueWorker(BlockingQueue<TrebllePayload> queue, PublisherClient publisherClient) {
+    public ParallelQueueWorker(EventQueue queue, PublisherClient publisherClient) {
         this.eventQueue = queue;
         this.client = publisherClient;
     }

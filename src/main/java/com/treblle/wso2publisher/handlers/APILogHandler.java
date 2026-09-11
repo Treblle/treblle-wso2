@@ -696,7 +696,11 @@ public class APILogHandler extends AbstractHandler {
      * body when it's over the limit, and confirms what remains is actually valid JSON. WSO2's own
      * JsonUtil can report a successful conversion while producing text that doesn't round-trip
      * cleanly; forwarding that would just move the corruption from wso2carbon.log into Treblle,
-     * so anything that fails validation is discarded — metadata is still logged, just not the body.
+     * so anything that fails validation is swapped for a placeholder — metadata is still logged,
+     * just not the body. The raw body is only ever written to wso2carbon.log, and only at debug
+     * level, since it's arbitrary un-parseable text at that point and not safe to forward as-is.
+     * That text is also not ours to trust: it's escaped and length-capped before being logged so
+     * it can't forge extra log lines or flood wso2carbon.log with a near-2MB payload.
      */
     private String validateAndCapBody(String body, String label) {
         if (body == null || body.isEmpty()) {
@@ -712,11 +716,28 @@ public class APILogHandler extends AbstractHandler {
             new JSONTokener(body).nextValue();
         } catch (JSONException e) {
             if (log.isDebugEnabled()) {
-                log.debug("[TREBLLE]: Discarding captured body, failed JSON validation: " + e.getMessage());
+                log.debug("[TREBLLE]: Replacing captured body, failed JSON validation: " + e.getMessage());
+                log.debug("[TREBLLE]: " + label + " payload that failed JSON validation: " + sanitizeForLog(body));
             }
-            return null;
+            return JSONObject.quote("Unable to convert the " + label.toLowerCase() + " payload to a valid JSON");
         }
         return body;
+    }
+
+    private static final int MAX_DEBUG_LOG_BODY_CHARS = 2000;
+
+    /**
+     * The body logged here is an untrusted, arbitrary payload that failed JSON parsing — it may
+     * not even be text. Escaping CR/LF stops it from forging fake log lines, and the length cap
+     * stops one oversized payload (up to just under the 2MB capture limit) from flooding
+     * wso2carbon.log with a single debug statement.
+     */
+    private String sanitizeForLog(String value) {
+        String sanitized = value.replace("\r", "\\r").replace("\n", "\\n");
+        if (sanitized.length() > MAX_DEBUG_LOG_BODY_CHARS) {
+            sanitized = sanitized.substring(0, MAX_DEBUG_LOG_BODY_CHARS) + "... [truncated]";
+        }
+        return sanitized;
     }
 
     /**

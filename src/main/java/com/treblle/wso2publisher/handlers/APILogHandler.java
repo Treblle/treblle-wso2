@@ -4,6 +4,7 @@ import java.net.InetAddress;
 import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.treblle.wso2publisher.commons.PropertyUtils;
@@ -16,6 +17,7 @@ import org.apache.synapse.rest.AbstractHandler;
 import org.apache.synapse.transport.passthru.util.RelayUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.json.JSONTokener;
 import org.wso2.carbon.apimgt.gateway.APIMgtGatewayConstants;
 
 import com.treblle.wso2publisher.dto.Data;
@@ -78,6 +80,10 @@ public class APILogHandler extends AbstractHandler {
         String ver = System.getProperty("carbon.product.version");
         WSO2_SOFTWARE = ver != null ? "WSO2 " + ver : "WSO2 API Manager";
     }
+
+    // Matches the payload cap used by other Treblle SDKs: bodies at or above this size are
+    // never built/captured — request/response metadata is still logged, just without the payload.
+    private static final long MAX_BODY_CAPTURE_BYTES = 2L * 1024 * 1024; // 2MB
 
     private static final int API_CONFIG_CACHE_MAX_SIZE = 1000;
     private static final long API_CONFIG_CACHE_TTL_MILLIS = 5 * 60 * 1000L; // 5 minutes
@@ -151,7 +157,7 @@ public class APILogHandler extends AbstractHandler {
             String reqBodyRaw = null;
             if (!"GET".equalsIgnoreCase(httpMethod) && !"HEAD".equalsIgnoreCase(httpMethod)
                     && !"DELETE".equalsIgnoreCase(httpMethod)) {
-                reqBodyRaw = getMessageBodyRaw(messageContext, headersMap);
+                reqBodyRaw = getMessageBodyRaw(messageContext, headersMap, true);
             }
             messageContext.setProperty(TREBLLE_REQ_BODY, reqBodyRaw);
 
@@ -310,6 +316,25 @@ public class APILogHandler extends AbstractHandler {
         return responseTime;
     }
 
+    /**
+     * Prefers the actual Content-Length header for the reported response size, falling back to
+     * the captured body's length. Needed because responseBodyRaw may be the "payload is larger
+     * than 2MB" placeholder rather than the real body once the size cap trips, and reporting the
+     * placeholder's own (tiny) length would misrepresent the real response size.
+     */
+    private long getResponseSize(Map<String, String> headers, String responseBodyRaw) {
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if ("content-length".equalsIgnoreCase(entry.getKey())) {
+                try {
+                    return Long.parseLong(entry.getValue().trim());
+                } catch (NumberFormatException ignored) {
+                    break;
+                }
+            }
+        }
+        return responseBodyRaw != null ? (long) responseBodyRaw.length() : 0L;
+    }
+
     private String getSourceIP(org.apache.axis2.context.MessageContext axis2Context, Map<String, String> headers) {
         String clientIP;
         // Check if the X-FORWARDED-FOR header is present in the headers map
@@ -450,9 +475,9 @@ public class APILogHandler extends AbstractHandler {
         // Set response properties
         response.setCode(responseCode);
         Map<String, String> responseHeaderMap = getHeaders(messageContext);
-        String responseBodyRaw = getMessageBodyRaw(messageContext, responseHeaderMap);
+        String responseBodyRaw = getMessageBodyRaw(messageContext, responseHeaderMap, false);
         response.setBodyRaw(responseBodyRaw);
-        response.setSize(responseBodyRaw != null ? (long) responseBodyRaw.length() : 0L);
+        response.setSize(getResponseSize(responseHeaderMap, responseBodyRaw));
         response.setHeaders(responseHeaderMap);
         response.setLoadTime((double) getResponseTime(messageContext));
 
@@ -568,17 +593,20 @@ public class APILogHandler extends AbstractHandler {
         return headersMap;
     }
 
-    private String getMessageBodyRaw(MessageContext messageContext, Map<String, String> headers) {
+    private String getMessageBodyRaw(MessageContext messageContext, Map<String, String> headers, boolean isRequest) {
 
+        String label = isRequest ? "Request" : "Response";
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
 
-        // Determine content type case-insensitively BEFORE building the message.
+        // Determine content type and content length case-insensitively BEFORE building the message.
         String contentType = null;
+        String contentLengthHeader = null;
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             if ("content-type".equalsIgnoreCase(entry.getKey())) {
                 contentType = entry.getValue().toLowerCase();
-                break;
+            } else if ("content-length".equalsIgnoreCase(entry.getKey())) {
+                contentLengthHeader = entry.getValue();
             }
         }
 
@@ -595,6 +623,23 @@ public class APILogHandler extends AbstractHandler {
             return null;
         }
 
+        // Same payload cap other Treblle SDKs use: don't build/capture bodies at or above 2MB
+        // (large bodies are the likeliest file uploads/binary-in-disguise, and also the costliest
+        // and riskiest to force through RelayUtils.buildMessage()). Metadata is still logged.
+        if (contentLengthHeader != null) {
+            try {
+                if (Long.parseLong(contentLengthHeader.trim()) >= MAX_BODY_CAPTURE_BYTES) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("[TREBLLE]: Skipping body capture, Content-Length " + contentLengthHeader
+                                + " exceeds " + MAX_BODY_CAPTURE_BYTES + " byte cap");
+                    }
+                    return JSONObject.quote(label + " payload is larger than 2MB");
+                }
+            } catch (NumberFormatException ignored) {
+                // Malformed header — fall through and let the build attempt happen.
+            }
+        }
+
         try {
             RelayUtils.buildMessage(axis2MsgContext);
         } catch (Exception e) {
@@ -606,7 +651,7 @@ public class APILogHandler extends AbstractHandler {
         try {
             String jsonStr = JsonUtil.jsonPayloadToString(axis2MsgContext);
             if (jsonStr != null && !jsonStr.isEmpty()) {
-                return jsonStr;
+                return validateAndCapBody(jsonStr, label);
             }
         } catch (Exception e) {
             log.debug("[TREBLLE]: Body is not JSON: " + e.getMessage());
@@ -627,13 +672,13 @@ public class APILogHandler extends AbstractHandler {
                         formData.put(child.getLocalName(), child.getText());
                     }
                     if (!formData.isEmpty()) {
-                        return new JSONObject(formData).toString();
+                        return validateAndCapBody(new JSONObject(formData).toString(), label);
                     }
 
                     // Fallback: raw URL-encoded text in the body element
                     String rawText = bodyElement.getText();
                     if (rawText != null && !rawText.isEmpty()) {
-                        return parseUrlEncodedBodyRaw(rawText);
+                        return validateAndCapBody(parseUrlEncodedBodyRaw(rawText), label);
                     }
                 }
             } catch (Exception e) {
@@ -642,6 +687,36 @@ public class APILogHandler extends AbstractHandler {
         }
 
         return null;
+    }
+
+    /**
+     * Last line of defense before a captured body is handed off to Treblle: caps it at the same
+     * 2MB limit other Treblle SDKs use (a second check, since Content-Length can be absent or
+     * wrong — e.g. chunked transfer encoding), swapping in a placeholder message rather than the
+     * body when it's over the limit, and confirms what remains is actually valid JSON. WSO2's own
+     * JsonUtil can report a successful conversion while producing text that doesn't round-trip
+     * cleanly; forwarding that would just move the corruption from wso2carbon.log into Treblle,
+     * so anything that fails validation is discarded — metadata is still logged, just not the body.
+     */
+    private String validateAndCapBody(String body, String label) {
+        if (body == null || body.isEmpty()) {
+            return null;
+        }
+        if (body.getBytes(StandardCharsets.UTF_8).length >= MAX_BODY_CAPTURE_BYTES) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Replacing captured body, size exceeds " + MAX_BODY_CAPTURE_BYTES + " byte cap");
+            }
+            return JSONObject.quote(label + " payload is larger than 2MB");
+        }
+        try {
+            new JSONTokener(body).nextValue();
+        } catch (JSONException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Discarding captured body, failed JSON validation: " + e.getMessage());
+            }
+            return null;
+        }
+        return body;
     }
 
     /**

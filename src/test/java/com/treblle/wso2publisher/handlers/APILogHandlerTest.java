@@ -430,19 +430,19 @@ public class APILogHandlerTest {
                 axisMsgCtx, "{\"would_be_read\":true}", true, true);
 
         APILogHandler apiLogHandler = new APILogHandler();
-        Method method = APILogHandler.class.getDeclaredMethod("getMessageBodyRaw", MessageContext.class, Map.class);
+        Method method = APILogHandler.class.getDeclaredMethod("getMessageBodyRaw", MessageContext.class, Map.class, boolean.class);
         method.setAccessible(true);
 
         // Binary response: must skip capture entirely -> null
         Map<String, String> pngHeaders = new HashMap<>();
         pngHeaders.put("Content-Type", "image/png");
-        Object pngBody = method.invoke(apiLogHandler, synCtx, pngHeaders);
+        Object pngBody = method.invoke(apiLogHandler, synCtx, pngHeaders, false);
         assertNull("Binary (image/png) body must not be captured", pngBody);
 
         // Text response with the same payload present: should be captured normally
         Map<String, String> jsonHeaders = new HashMap<>();
         jsonHeaders.put("Content-Type", "application/json");
-        Object jsonBody = method.invoke(apiLogHandler, synCtx, jsonHeaders);
+        Object jsonBody = method.invoke(apiLogHandler, synCtx, jsonHeaders, false);
         assertNotNull("JSON body should be captured", jsonBody);
         Assert.assertTrue(((String) jsonBody).contains("would_be_read"));
     }

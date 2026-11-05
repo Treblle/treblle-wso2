@@ -475,7 +475,14 @@ public class APILogHandler extends AbstractHandler {
         // Set response properties
         response.setCode(responseCode);
         Map<String, String> responseHeaderMap = getHeaders(messageContext);
-        String responseBodyRaw = getMessageBodyRaw(messageContext, responseHeaderMap, false);
+
+        // Responses that never carry a body (204 No Content, 304 Not Modified, or a HEAD request)
+        // have nothing for RelayUtils.buildMessage() to build — skip capture rather than forcing
+        // a parse of an empty/absent stream.
+        String responseBodyRaw = null;
+        if (responseCode != 204 && responseCode != 304 && !"HEAD".equalsIgnoreCase(method)) {
+            responseBodyRaw = getMessageBodyRaw(messageContext, responseHeaderMap, false);
+        }
         response.setBodyRaw(responseBodyRaw);
         response.setSize(getResponseSize(responseHeaderMap, responseBodyRaw));
         response.setHeaders(responseHeaderMap);
@@ -599,15 +606,36 @@ public class APILogHandler extends AbstractHandler {
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
 
-        // Determine content type and content length case-insensitively BEFORE building the message.
+        // Determine content type, content length and content encoding case-insensitively
+        // BEFORE building the message.
         String contentType = null;
         String contentLengthHeader = null;
+        String contentEncoding = null;
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             if ("content-type".equalsIgnoreCase(entry.getKey())) {
                 contentType = entry.getValue().toLowerCase();
             } else if ("content-length".equalsIgnoreCase(entry.getKey())) {
                 contentLengthHeader = entry.getValue();
+            } else if ("content-encoding".equalsIgnoreCase(entry.getKey())) {
+                contentEncoding = entry.getValue().toLowerCase();
             }
+        }
+
+        // A body with no content (204/304, or an explicit zero Content-Length) has nothing to
+        // build. Skip it rather than handing an empty stream to RelayUtils.buildMessage().
+        if (contentLengthHeader != null && contentLengthHeader.trim().equals("0")) {
+            return null;
+        }
+
+        // A compressed body (gzip/deflate/br) is not text at the wire level even when
+        // Content-Type says json/xml/text — RelayUtils.buildMessage() would try to parse the raw
+        // compressed bytes as JSON/XML and fault. We don't decompress here; just skip capture and
+        // leave the stream untouched, same as we do for binary content types below.
+        if (contentEncoding != null && !contentEncoding.isEmpty() && !contentEncoding.equals("identity")) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Skipping body capture for compressed content encoding: " + contentEncoding);
+            }
+            return null;
         }
 
         // Never build/consume binary payloads. In the WSO2 pass-through transport a binary
@@ -643,7 +671,17 @@ public class APILogHandler extends AbstractHandler {
         try {
             RelayUtils.buildMessage(axis2MsgContext);
         } catch (Exception e) {
-            log.error("[TREBLLE]: Error building message: " + e.getMessage());
+            // Bare e.getMessage() isn't enough to diagnose *why* a given body couldn't be built —
+            // log the context (label, message ID, and the headers that drove the capture decision
+            // above) alongside it, so a future edge case we haven't already guarded against is
+            // debuggable from wso2carbon.log alone instead of needing to be reproduced blind.
+            log.error("[TREBLLE]: Error building " + label.toLowerCase() + " message. MessageID="
+                    + axis2MsgContext.getMessageID() + ", Content-Type=" + contentType
+                    + ", Content-Encoding=" + contentEncoding + ", Content-Length=" + contentLengthHeader
+                    + ", exception=" + e.getClass().getName() + ": " + e.getMessage());
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Full stack trace for error building " + label.toLowerCase() + " message", e);
+            }
             return null;
         }
 

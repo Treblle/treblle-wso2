@@ -12,7 +12,6 @@ import org.junit.Test;
 import com.treblle.wso2publisher.dto.TrebllePayload;
 import com.treblle.wso2publisher.handlers.DataHolder;
 
-import com.google.common.cache.Cache;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -315,7 +314,7 @@ public class APILogHandlerTest {
         // Clear the cache before test
         Field cacheField = APILogHandler.class.getDeclaredField("apiConfigCache");
         cacheField.setAccessible(true);
-        ((Cache<?, ?>) cacheField.get(null)).invalidateAll();
+        ((APILogHandler.PerApiConfigCache) cacheField.get(null)).invalidateAll();
 
         APILogHandler apiLogHandler = new APILogHandler();
         boolean result = apiLogHandler.handleRequest(synCtx);
@@ -337,7 +336,7 @@ public class APILogHandlerTest {
         // Clear the cache before test
         Field cacheField = APILogHandler.class.getDeclaredField("apiConfigCache");
         cacheField.setAccessible(true);
-        Cache<String, ?> cache = (Cache<String, ?>) cacheField.get(null);
+        APILogHandler.PerApiConfigCache cache = (APILogHandler.PerApiConfigCache) cacheField.get(null);
         cache.invalidateAll();
 
         SynapseConfiguration synCfg = new SynapseConfiguration();
@@ -431,21 +430,85 @@ public class APILogHandlerTest {
                 axisMsgCtx, "{\"would_be_read\":true}", true, true);
 
         APILogHandler apiLogHandler = new APILogHandler();
-        Method method = APILogHandler.class.getDeclaredMethod("getMessageBodyRaw", MessageContext.class, Map.class);
+        Method method = APILogHandler.class.getDeclaredMethod("getMessageBodyRaw", MessageContext.class, Map.class, boolean.class);
         method.setAccessible(true);
 
         // Binary response: must skip capture entirely -> null
         Map<String, String> pngHeaders = new HashMap<>();
         pngHeaders.put("Content-Type", "image/png");
-        Object pngBody = method.invoke(apiLogHandler, synCtx, pngHeaders);
+        Object pngBody = method.invoke(apiLogHandler, synCtx, pngHeaders, false);
         assertNull("Binary (image/png) body must not be captured", pngBody);
 
         // Text response with the same payload present: should be captured normally
         Map<String, String> jsonHeaders = new HashMap<>();
         jsonHeaders.put("Content-Type", "application/json");
-        Object jsonBody = method.invoke(apiLogHandler, synCtx, jsonHeaders);
+        Object jsonBody = method.invoke(apiLogHandler, synCtx, jsonHeaders, false);
         assertNotNull("JSON body should be captured", jsonBody);
         Assert.assertTrue(((String) jsonBody).contains("would_be_read"));
+    }
+
+    @Test
+    public void testValidateAndCapBodyReturnsPlaceholderForInvalidJson() throws Exception {
+        APILogHandler apiLogHandler = new APILogHandler();
+        Method method = APILogHandler.class.getDeclaredMethod("validateAndCapBody", String.class, String.class);
+        method.setAccessible(true);
+
+        Object result = method.invoke(apiLogHandler, "{not valid json", "Request");
+        Assert.assertEquals(org.json.JSONObject.quote("Unable to convert the request payload to a valid JSON"),
+                result);
+
+        Object responseResult = method.invoke(apiLogHandler, "{not valid json", "Response");
+        Assert.assertEquals(org.json.JSONObject.quote("Unable to convert the response payload to a valid JSON"),
+                responseResult);
+    }
+
+    @Test
+    public void testValidateAndCapBodyPassesThroughValidJson() throws Exception {
+        APILogHandler apiLogHandler = new APILogHandler();
+        Method method = APILogHandler.class.getDeclaredMethod("validateAndCapBody", String.class, String.class);
+        method.setAccessible(true);
+
+        Object result = method.invoke(apiLogHandler, "{\"ok\":true}", "Request");
+        Assert.assertEquals("{\"ok\":true}", result);
+    }
+
+    @Test
+    public void testValidateAndCapBodyReturnsPlaceholderWhenOverSizeCap() throws Exception {
+        APILogHandler apiLogHandler = new APILogHandler();
+        Method method = APILogHandler.class.getDeclaredMethod("validateAndCapBody", String.class, String.class);
+        method.setAccessible(true);
+
+        // 2MB + 1 byte of valid JSON (a big array of a single-char string, padded), so the
+        // cap must fire before JSON parsing would even matter.
+        StringBuilder oversized = new StringBuilder("{\"data\":\"");
+        while (oversized.length() < 2 * 1024 * 1024 + 1) {
+            oversized.append('a');
+        }
+        oversized.append("\"}");
+
+        Object result = method.invoke(apiLogHandler, oversized.toString(), "Request");
+        Assert.assertEquals(org.json.JSONObject.quote("Request payload is larger than 2MB"), result);
+    }
+
+    @Test
+    public void testSanitizeForLogEscapesNewlinesAndTruncates() throws Exception {
+        APILogHandler apiLogHandler = new APILogHandler();
+        Method method = APILogHandler.class.getDeclaredMethod("sanitizeForLog", String.class);
+        method.setAccessible(true);
+
+        // CR/LF must be escaped so untrusted payload content can't forge extra log lines.
+        Object result = method.invoke(apiLogHandler, "line1\r\nline2");
+        Assert.assertEquals("line1\\r\\nline2", result);
+
+        // Oversized payloads must be truncated rather than flooding the log.
+        StringBuilder longValue = new StringBuilder();
+        for (int i = 0; i < 2500; i++) {
+            longValue.append('x');
+        }
+        Object truncated = method.invoke(apiLogHandler, longValue.toString());
+        String truncatedStr = (String) truncated;
+        Assert.assertTrue(truncatedStr.endsWith("... [truncated]"));
+        Assert.assertEquals(2000 + "... [truncated]".length(), truncatedStr.length());
     }
 
     @Test

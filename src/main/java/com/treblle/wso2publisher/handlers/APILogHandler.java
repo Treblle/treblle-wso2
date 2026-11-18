@@ -4,15 +4,12 @@ import java.net.InetAddress;
 import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
-import java.util.concurrent.TimeUnit;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ConcurrentHashMap;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.treblle.wso2publisher.commons.PropertyUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.text.StringEscapeUtils;
 import org.apache.synapse.MessageContext;
 import org.apache.synapse.commons.json.JsonUtil;
 import org.apache.synapse.core.axis2.Axis2MessageContext;
@@ -20,6 +17,7 @@ import org.apache.synapse.rest.AbstractHandler;
 import org.apache.synapse.transport.passthru.util.RelayUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.json.JSONTokener;
 import org.wso2.carbon.apimgt.gateway.APIMgtGatewayConstants;
 
 import com.treblle.wso2publisher.dto.Data;
@@ -83,11 +81,14 @@ public class APILogHandler extends AbstractHandler {
         WSO2_SOFTWARE = ver != null ? "WSO2 " + ver : "WSO2 API Manager";
     }
 
+    // Matches the payload cap used by other Treblle SDKs: bodies at or above this size are
+    // never built/captured — request/response metadata is still logged, just without the payload.
+    private static final long MAX_BODY_CAPTURE_BYTES = 2L * 1024 * 1024; // 2MB
+
     private static final int API_CONFIG_CACHE_MAX_SIZE = 1000;
-    private static final Cache<String, PerApiConfig> apiConfigCache = CacheBuilder.newBuilder()
-        .maximumSize(API_CONFIG_CACHE_MAX_SIZE)
-        .expireAfterWrite(5, TimeUnit.MINUTES)
-        .build();
+    private static final long API_CONFIG_CACHE_TTL_MILLIS = 5 * 60 * 1000L; // 5 minutes
+    private static final PerApiConfigCache apiConfigCache =
+        new PerApiConfigCache(API_CONFIG_CACHE_MAX_SIZE, API_CONFIG_CACHE_TTL_MILLIS);
     private static volatile String serverIP;
 
     private static final Log log = LogFactory.getLog(APILogHandler.class);
@@ -100,7 +101,7 @@ public class APILogHandler extends AbstractHandler {
         log.warn("[TREBLLE]:setAdditionalProperties called with: " + additionalPropertiesJsonXmlEscaped);
         this.additionalProperties.clear();
         if (additionalPropertiesJsonXmlEscaped != null && !additionalPropertiesJsonXmlEscaped.trim().isEmpty()) {
-            String additionalPropertiesJson = StringEscapeUtils.unescapeXml(additionalPropertiesJsonXmlEscaped);
+            String additionalPropertiesJson = unescapeXml(additionalPropertiesJsonXmlEscaped);
             try {
                 JSONObject jsonObject = new JSONObject(additionalPropertiesJson);
                 this.additionalProperties.putAll(PropertyUtils.toProperties(jsonObject));
@@ -156,7 +157,7 @@ public class APILogHandler extends AbstractHandler {
             String reqBodyRaw = null;
             if (!"GET".equalsIgnoreCase(httpMethod) && !"HEAD".equalsIgnoreCase(httpMethod)
                     && !"DELETE".equalsIgnoreCase(httpMethod)) {
-                reqBodyRaw = getMessageBodyRaw(messageContext, headersMap);
+                reqBodyRaw = getMessageBodyRaw(messageContext, headersMap, true);
             }
             messageContext.setProperty(TREBLLE_REQ_BODY, reqBodyRaw);
 
@@ -315,11 +316,30 @@ public class APILogHandler extends AbstractHandler {
         return responseTime;
     }
 
+    /**
+     * Prefers the actual Content-Length header for the reported response size, falling back to
+     * the captured body's length. Needed because responseBodyRaw may be the "payload is larger
+     * than 2MB" placeholder rather than the real body once the size cap trips, and reporting the
+     * placeholder's own (tiny) length would misrepresent the real response size.
+     */
+    private long getResponseSize(Map<String, String> headers, String responseBodyRaw) {
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if ("content-length".equalsIgnoreCase(entry.getKey())) {
+                try {
+                    return Long.parseLong(entry.getValue().trim());
+                } catch (NumberFormatException ignored) {
+                    break;
+                }
+            }
+        }
+        return responseBodyRaw != null ? (long) responseBodyRaw.length() : 0L;
+    }
+
     private String getSourceIP(org.apache.axis2.context.MessageContext axis2Context, Map<String, String> headers) {
         String clientIP;
         // Check if the X-FORWARDED-FOR header is present in the headers map
         String xForwardedForHeader = (String) headers.get(HEADER_X_FORWARDED_FOR);
-        if (!StringUtils.isEmpty(xForwardedForHeader)) {
+        if (!isEmpty(xForwardedForHeader)) {
             // Use the first IP address in the X-FORWARDED-FOR header
             clientIP = xForwardedForHeader;
             int index = xForwardedForHeader.indexOf(',');
@@ -331,7 +351,7 @@ public class APILogHandler extends AbstractHandler {
             clientIP = (String) axis2Context.getProperty(org.apache.axis2.context.MessageContext.REMOTE_ADDR);
         }
         // Return null if the client IP is empty
-        if (StringUtils.isEmpty(clientIP)) {
+        if (isEmpty(clientIP)) {
             return null;
         }
         // Ignore the port if present and only use the IP address
@@ -455,9 +475,16 @@ public class APILogHandler extends AbstractHandler {
         // Set response properties
         response.setCode(responseCode);
         Map<String, String> responseHeaderMap = getHeaders(messageContext);
-        String responseBodyRaw = getMessageBodyRaw(messageContext, responseHeaderMap);
+
+        // Responses that never carry a body (204 No Content, 304 Not Modified, or a HEAD request)
+        // have nothing for RelayUtils.buildMessage() to build — skip capture rather than forcing
+        // a parse of an empty/absent stream.
+        String responseBodyRaw = null;
+        if (responseCode != 204 && responseCode != 304 && !"HEAD".equalsIgnoreCase(method)) {
+            responseBodyRaw = getMessageBodyRaw(messageContext, responseHeaderMap, false);
+        }
         response.setBodyRaw(responseBodyRaw);
-        response.setSize(responseBodyRaw != null ? (long) responseBodyRaw.length() : 0L);
+        response.setSize(getResponseSize(responseHeaderMap, responseBodyRaw));
         response.setHeaders(responseHeaderMap);
         response.setLoadTime((double) getResponseTime(messageContext));
 
@@ -573,18 +600,42 @@ public class APILogHandler extends AbstractHandler {
         return headersMap;
     }
 
-    private String getMessageBodyRaw(MessageContext messageContext, Map<String, String> headers) {
+    private String getMessageBodyRaw(MessageContext messageContext, Map<String, String> headers, boolean isRequest) {
 
+        String label = isRequest ? "Request" : "Response";
         org.apache.axis2.context.MessageContext axis2MsgContext = ((Axis2MessageContext) messageContext)
                 .getAxis2MessageContext();
 
-        // Determine content type case-insensitively BEFORE building the message.
+        // Determine content type, content length and content encoding case-insensitively
+        // BEFORE building the message.
         String contentType = null;
+        String contentLengthHeader = null;
+        String contentEncoding = null;
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             if ("content-type".equalsIgnoreCase(entry.getKey())) {
                 contentType = entry.getValue().toLowerCase();
-                break;
+            } else if ("content-length".equalsIgnoreCase(entry.getKey())) {
+                contentLengthHeader = entry.getValue();
+            } else if ("content-encoding".equalsIgnoreCase(entry.getKey())) {
+                contentEncoding = entry.getValue().toLowerCase();
             }
+        }
+
+        // A body with no content (204/304, or an explicit zero Content-Length) has nothing to
+        // build. Skip it rather than handing an empty stream to RelayUtils.buildMessage().
+        if (contentLengthHeader != null && contentLengthHeader.trim().equals("0")) {
+            return null;
+        }
+
+        // A compressed body (gzip/deflate/br) is not text at the wire level even when
+        // Content-Type says json/xml/text — RelayUtils.buildMessage() would try to parse the raw
+        // compressed bytes as JSON/XML and fault. We don't decompress here; just skip capture and
+        // leave the stream untouched, same as we do for binary content types below.
+        if (contentEncoding != null && !contentEncoding.isEmpty() && !contentEncoding.equals("identity")) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Skipping body capture for compressed content encoding: " + contentEncoding);
+            }
+            return null;
         }
 
         // Never build/consume binary payloads. In the WSO2 pass-through transport a binary
@@ -600,10 +651,37 @@ public class APILogHandler extends AbstractHandler {
             return null;
         }
 
+        // Same payload cap other Treblle SDKs use: don't build/capture bodies at or above 2MB
+        // (large bodies are the likeliest file uploads/binary-in-disguise, and also the costliest
+        // and riskiest to force through RelayUtils.buildMessage()). Metadata is still logged.
+        if (contentLengthHeader != null) {
+            try {
+                if (Long.parseLong(contentLengthHeader.trim()) >= MAX_BODY_CAPTURE_BYTES) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("[TREBLLE]: Skipping body capture, Content-Length " + contentLengthHeader
+                                + " exceeds " + MAX_BODY_CAPTURE_BYTES + " byte cap");
+                    }
+                    return JSONObject.quote(label + " payload is larger than 2MB");
+                }
+            } catch (NumberFormatException ignored) {
+                // Malformed header — fall through and let the build attempt happen.
+            }
+        }
+
         try {
             RelayUtils.buildMessage(axis2MsgContext);
         } catch (Exception e) {
-            log.error("[TREBLLE]: Error building message: " + e.getMessage());
+            // Bare e.getMessage() isn't enough to diagnose *why* a given body couldn't be built —
+            // log the context (label, message ID, and the headers that drove the capture decision
+            // above) alongside it, so a future edge case we haven't already guarded against is
+            // debuggable from wso2carbon.log alone instead of needing to be reproduced blind.
+            log.error("[TREBLLE]: Error building " + label.toLowerCase() + " message. MessageID="
+                    + axis2MsgContext.getMessageID() + ", Content-Type=" + contentType
+                    + ", Content-Encoding=" + contentEncoding + ", Content-Length=" + contentLengthHeader
+                    + ", exception=" + e.getClass().getName() + ": " + e.getMessage());
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Full stack trace for error building " + label.toLowerCase() + " message", e);
+            }
             return null;
         }
 
@@ -611,7 +689,7 @@ public class APILogHandler extends AbstractHandler {
         try {
             String jsonStr = JsonUtil.jsonPayloadToString(axis2MsgContext);
             if (jsonStr != null && !jsonStr.isEmpty()) {
-                return jsonStr;
+                return validateAndCapBody(jsonStr, label);
             }
         } catch (Exception e) {
             log.debug("[TREBLLE]: Body is not JSON: " + e.getMessage());
@@ -632,13 +710,13 @@ public class APILogHandler extends AbstractHandler {
                         formData.put(child.getLocalName(), child.getText());
                     }
                     if (!formData.isEmpty()) {
-                        return new JSONObject(formData).toString();
+                        return validateAndCapBody(new JSONObject(formData).toString(), label);
                     }
 
                     // Fallback: raw URL-encoded text in the body element
                     String rawText = bodyElement.getText();
                     if (rawText != null && !rawText.isEmpty()) {
-                        return parseUrlEncodedBodyRaw(rawText);
+                        return validateAndCapBody(parseUrlEncodedBodyRaw(rawText), label);
                     }
                 }
             } catch (Exception e) {
@@ -647,6 +725,57 @@ public class APILogHandler extends AbstractHandler {
         }
 
         return null;
+    }
+
+    /**
+     * Last line of defense before a captured body is handed off to Treblle: caps it at the same
+     * 2MB limit other Treblle SDKs use (a second check, since Content-Length can be absent or
+     * wrong — e.g. chunked transfer encoding), swapping in a placeholder message rather than the
+     * body when it's over the limit, and confirms what remains is actually valid JSON. WSO2's own
+     * JsonUtil can report a successful conversion while producing text that doesn't round-trip
+     * cleanly; forwarding that would just move the corruption from wso2carbon.log into Treblle,
+     * so anything that fails validation is swapped for a placeholder — metadata is still logged,
+     * just not the body. The raw body is only ever written to wso2carbon.log, and only at debug
+     * level, since it's arbitrary un-parseable text at that point and not safe to forward as-is.
+     * That text is also not ours to trust: it's escaped and length-capped before being logged so
+     * it can't forge extra log lines or flood wso2carbon.log with a near-2MB payload.
+     */
+    private String validateAndCapBody(String body, String label) {
+        if (body == null || body.isEmpty()) {
+            return null;
+        }
+        if (body.getBytes(StandardCharsets.UTF_8).length >= MAX_BODY_CAPTURE_BYTES) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Replacing captured body, size exceeds " + MAX_BODY_CAPTURE_BYTES + " byte cap");
+            }
+            return JSONObject.quote(label + " payload is larger than 2MB");
+        }
+        try {
+            new JSONTokener(body).nextValue();
+        } catch (JSONException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TREBLLE]: Replacing captured body, failed JSON validation: " + e.getMessage());
+                log.debug("[TREBLLE]: " + label + " payload that failed JSON validation: " + sanitizeForLog(body));
+            }
+            return JSONObject.quote("Unable to convert the " + label.toLowerCase() + " payload to a valid JSON");
+        }
+        return body;
+    }
+
+    private static final int MAX_DEBUG_LOG_BODY_CHARS = 2000;
+
+    /**
+     * The body logged here is an untrusted, arbitrary payload that failed JSON parsing — it may
+     * not even be text. Escaping CR/LF stops it from forging fake log lines, and the length cap
+     * stops one oversized payload (up to just under the 2MB capture limit) from flooding
+     * wso2carbon.log with a single debug statement.
+     */
+    private String sanitizeForLog(String value) {
+        String sanitized = value.replace("\r", "\\r").replace("\n", "\\n");
+        if (sanitized.length() > MAX_DEBUG_LOG_BODY_CHARS) {
+            sanitized = sanitized.substring(0, MAX_DEBUG_LOG_BODY_CHARS) + "... [truncated]";
+        }
+        return sanitized;
     }
 
     /**
@@ -1114,6 +1243,76 @@ public class APILogHandler extends AbstractHandler {
                 .trim();
     }
 
+    /**
+     * True when the string is null or empty. Local replacement for
+     * org.apache.commons.lang.StringUtils.isEmpty so the bundle carries no
+     * commons-lang runtime dependency to wire in the OSGi container.
+     */
+    private static boolean isEmpty(String value) {
+        return value == null || value.isEmpty();
+    }
+
+    /**
+     * Unescape the five predefined XML entities plus numeric character references.
+     * Local replacement for org.apache.commons.text.StringEscapeUtils.unescapeXml —
+     * commons-text is only used to decode the velocity-injected additionalProperties
+     * JSON, and dropping it removes a fragile (provided-scope) OSGi import.
+     */
+    private static String unescapeXml(String input) {
+        if (input == null || input.indexOf('&') < 0) {
+            return input;
+        }
+        StringBuilder out = new StringBuilder(input.length());
+        int i = 0;
+        int len = input.length();
+        while (i < len) {
+            char c = input.charAt(i);
+            if (c != '&') {
+                out.append(c);
+                i++;
+                continue;
+            }
+            int semi = input.indexOf(';', i + 1);
+            if (semi < 0) { // no terminator — treat as literal
+                out.append(c);
+                i++;
+                continue;
+            }
+            String entity = input.substring(i + 1, semi);
+            String decoded = decodeXmlEntity(entity);
+            if (decoded != null) {
+                out.append(decoded);
+                i = semi + 1;
+            } else { // unknown entity — leave the '&' literal and continue
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
+    }
+
+    private static String decodeXmlEntity(String entity) {
+        switch (entity) {
+            case "amp":  return "&";
+            case "lt":   return "<";
+            case "gt":   return ">";
+            case "quot": return "\"";
+            case "apos": return "'";
+            default:
+                if (!entity.isEmpty() && entity.charAt(0) == '#') {
+                    try {
+                        int code = (entity.length() > 1 && (entity.charAt(1) == 'x' || entity.charAt(1) == 'X'))
+                                ? Integer.parseInt(entity.substring(2), 16)
+                                : Integer.parseInt(entity.substring(1));
+                        return new String(Character.toChars(code));
+                    } catch (RuntimeException e) {
+                        return null; // malformed numeric reference
+                    }
+                }
+                return null;
+        }
+    }
+
     private static final class PerApiConfig {
         final List<String> maskKeywords; // null = not configured
         final boolean disableResponseBody;
@@ -1121,6 +1320,94 @@ public class APILogHandler extends AbstractHandler {
         PerApiConfig(List<String> maskKeywords, boolean disableResponseBody) {
             this.maskKeywords = maskKeywords;
             this.disableResponseBody = disableResponseBody;
+        }
+    }
+
+    /**
+     * Minimal thread-safe, size-bounded, write-expiring cache — a drop-in replacement
+     * for the former Guava {@code Cache} so the bundle carries no Guava runtime
+     * dependency to wire in the OSGi container (Guava's major version drifts across
+     * WSO2 releases, which made the optional import silently fail on 4.6).
+     *
+     * <p>Keys are bounded by the number of deployed APIs, so overflow is rare; on
+     * overflow we purge expired entries and, if still full, evict the oldest.
+     * Package-private so tests can reference it.
+     */
+    static final class PerApiConfigCache {
+        private final ConcurrentHashMap<String, Entry> map = new ConcurrentHashMap<>();
+        private final int maxSize;
+        private final long ttlMillis;
+
+        PerApiConfigCache(int maxSize, long ttlMillis) {
+            this.maxSize = maxSize;
+            this.ttlMillis = ttlMillis;
+        }
+
+        PerApiConfig getIfPresent(String key) {
+            if (key == null) {
+                return null;
+            }
+            Entry e = map.get(key);
+            if (e == null) {
+                return null;
+            }
+            if (isExpired(e)) {
+                map.remove(key, e);
+                return null;
+            }
+            return e.value;
+        }
+
+        void put(String key, PerApiConfig value) {
+            if (key == null) {
+                return;
+            }
+            if (map.size() >= maxSize && !map.containsKey(key)) {
+                evictForSpace();
+            }
+            map.put(key, new Entry(value, System.currentTimeMillis()));
+        }
+
+        void invalidateAll() {
+            map.clear();
+        }
+
+        private boolean isExpired(Entry e) {
+            return System.currentTimeMillis() - e.writeTimeMillis > ttlMillis;
+        }
+
+        private void evictForSpace() {
+            // First drop anything already expired.
+            for (Map.Entry<String, Entry> me : map.entrySet()) {
+                if (isExpired(me.getValue())) {
+                    map.remove(me.getKey(), me.getValue());
+                }
+            }
+            // Still full → evict the oldest entry.
+            while (map.size() >= maxSize) {
+                String oldestKey = null;
+                long oldest = Long.MAX_VALUE;
+                for (Map.Entry<String, Entry> me : map.entrySet()) {
+                    if (me.getValue().writeTimeMillis < oldest) {
+                        oldest = me.getValue().writeTimeMillis;
+                        oldestKey = me.getKey();
+                    }
+                }
+                if (oldestKey == null) {
+                    break;
+                }
+                map.remove(oldestKey);
+            }
+        }
+
+        private static final class Entry {
+            final PerApiConfig value;
+            final long writeTimeMillis;
+
+            Entry(PerApiConfig value, long writeTimeMillis) {
+                this.value = value;
+                this.writeTimeMillis = writeTimeMillis;
+            }
         }
     }
 

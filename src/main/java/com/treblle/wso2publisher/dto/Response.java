@@ -1,7 +1,5 @@
 package com.treblle.wso2publisher.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.util.Map;
 
 public class Response {
@@ -10,7 +8,6 @@ public class Response {
   private Integer code;
   private Long size;
 
-  @JsonProperty("load_time")
   private Double loadTime;
 
   private String bodyRaw;

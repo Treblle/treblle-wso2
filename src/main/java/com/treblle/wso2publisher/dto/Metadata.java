@@ -1,18 +1,13 @@
 package com.treblle.wso2publisher.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 public class Metadata {
 
-  @JsonProperty("api_version")
   private String apiVersion;
 
-  @JsonProperty("user-id")
   private String userId;
 
   private String publisher;
 
-  @JsonProperty("customer_ip")
   private String customerIp;
 
   private String tenant;

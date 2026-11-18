@@ -48,7 +48,7 @@
                 META-INF/versions/9/module-info.class that the legacy bnd in
                 maven-bundle-plugin 3.0.1 cannot parse when embedding.
             -->
-            <version>20190722</version>
+            <version>20260719</version>
         </dependency>
 
         <dependency>

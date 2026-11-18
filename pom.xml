@@ -7,7 +7,7 @@
 
     <groupId>com.treblle.wso2publisher.handlers</groupId>
     <artifactId>treblle-wso2</artifactId>
-    <version>3.0.7</version>
+    <version>3.0.8</version>
     <packaging>bundle</packaging>
 
     <name>Custom API Log Handler</name>
@@ -304,6 +304,19 @@
                 <wso2.apim.version>9.32.147</wso2.apim.version>
                 <wso2.synapse.version>4.0.0-wso2v262</wso2.synapse.version>
                 <wso2.version.suffix>4.6.x</wso2.version.suffix>
+            </properties>
+            <build>
+                <finalName>treblle-wso2-${project.version}</finalName>
+            </build>
+        </profile>
+
+        <!-- Profile for WSO2 API Manager 4.7.x -->
+        <profile>
+            <id>wso2am-4.7</id>
+            <properties>
+                <wso2.apim.version>9.33.122</wso2.apim.version>
+                <wso2.synapse.version>4.1.0-wso2v40</wso2.synapse.version>
+                <wso2.version.suffix>4.7.x</wso2.version.suffix>
             </properties>
             <build>
                 <finalName>treblle-wso2-${project.version}</finalName>

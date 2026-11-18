@@ -16,6 +16,7 @@ Treblle is an API intelligence platfom that helps developers, teams and organiza
 | 4.3.x | ✅ Supported (Default) | `wso2am-4.3` | 9.29.120 | 4.0.0-wso2v105 |
 | 4.4.x | ✅ Supported | `wso2am-4.4` | 9.31.0 | 4.0.0-wso2v106 |
 | 4.6.x | ✅ Supported | `wso2am-4.6` | 9.32.147 | 4.0.0-wso2v262 |
+| 4.7.x | ✅ Supported | `wso2am-4.7` | 9.33.122 | 4.1.0-wso2v40 |
 
 **Note:** The extension uses Maven profiles to support multiple WSO2 versions. By default, it builds for WSO2 APIM 4.3.x.
 
@@ -58,7 +59,7 @@ Execute the following command from the root directory:
 mvn clean install
 ```
 
-The JAR artifact will be created in the `target/` directory as `treblle-wso2-3.0.0.jar`
+The JAR artifact will be created in the `target/` directory as `treblle-wso2-3.0.8.jar`
 
 ### Building for Specific WSO2 Versions
 
@@ -82,19 +83,24 @@ mvn clean install -P wso2am-4.4
 
 # For WSO2 APIM 4.6.x
 mvn clean install -P wso2am-4.6
+
+# For WSO2 APIM 4.7.x
+mvn clean install -P wso2am-4.7
 ```
 
-All profiles produce the same JAR name: `treblle-wso2-3.0.0.jar`.
+All profiles produce the same JAR name: `treblle-wso2-3.0.8.jar`.
 
 ### Build All Versions at Once
 
-To build artifacts for all supported versions:
+Profiles can't be combined in a single Maven run (their properties override each other), so build each one in turn and keep its JAR:
 
 ```sh
-mvn clean install -P wso2am-4.0,wso2am-4.1,wso2am-4.2,wso2am-4.3,wso2am-4.4,wso2am-4.6
+for v in 4.0 4.1 4.2 4.3 4.4 4.6 4.7; do
+  mvn clean install -P wso2am-$v && cp target/treblle-wso2-3.0.8.jar treblle-wso2-3.0.8-wso2am-$v.jar
+done
 ```
 
-**Important:** Ensure you deploy the correct JAR artifact that matches your WSO2 API Manager version.
+**Important:** Ensure you deploy the correct JAR artifact that matches your WSO2 API Manager version. For example, the 4.7 build imports Synapse 4.1, so it will not resolve on 4.6 or earlier.
 
 ## Installation
 
@@ -103,7 +109,7 @@ mvn clean install -P wso2am-4.0,wso2am-4.1,wso2am-4.2,wso2am-4.3,wso2am-4.4,wso2
 Copy the built JAR artifact that matches your WSO2 version to your API Manager gateway:
 
 ```sh
-cp target/treblle-wso2-3.0.0.jar <APIM_HOME>/repository/components/lib/
+cp target/treblle-wso2-3.0.8.jar <APIM_HOME>/repository/components/lib/
 ```
 
 Replace `<APIM_HOME>` with your WSO2 API Manager installation directory.
@@ -284,7 +290,7 @@ grep -i treblle wso2carbon.log
 
 **Verify JAR location:**
 ```sh
-ls -la <APIM_HOME>/repository/components/lib/treblle-wso2-3.0.0.jar
+ls -la <APIM_HOME>/repository/components/lib/treblle-wso2-3.0.8.jar
 
 # Ensure the version matches your WSO2 APIM version
 ```
